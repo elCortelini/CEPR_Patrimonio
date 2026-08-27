@@ -1,0 +1,94 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Local {
+  id          String       @id @default(uuid())
+  nome        String       @unique
+  descricao   String?
+  bloco       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  patrimonios Patrimonio[]
+  consumiveis Consumivel[]
+}
+
+model Patrimonio {
+  codigo        String        @id
+  descricao     String
+  dataEntrada   String
+  origem        String
+  observacao    String?
+  
+  localId       String
+  local         Local         @relation(fields: [localId], references: [id])
+
+  status        String        @default("EM_USO")
+  baixado       Boolean       @default(false)
+  dataBaixa     String?
+  motivoBaixa   String?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  emprestimos   Emprestimo[]
+  manutencoes   Manutencao[]
+}
+
+model Emprestimo {
+  id                String     @id @default(uuid())
+  patrimonioCodigo  String
+  patrimonio        Patrimonio @relation(fields: [patrimonioCodigo], references: [codigo], onDelete: Cascade)
+  solicitante       String
+  cargo             String?
+  dataRetirada      String
+  previsaoDevolucao String
+  dataDevolucao     String?
+  status            String     @default("ATIVO")
+  observacao        String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Manutencao {
+  id                String     @id @default(uuid())
+  patrimonioCodigo  String
+  patrimonio        Patrimonio @relation(fields: [patrimonioCodigo], references: [codigo], onDelete: Cascade)
+  solicitante       String
+  descricaoProblema String
+  dataAbertura      String
+  status            String     @default("PENDENTE")
+  custo             Float?     @default(0.0)
+  solucao           String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Consumivel {
+  id               String   @id @default(uuid())
+  nome             String
+  categoria        String
+  quantidade       Int      @default(0)
+  quantidadeMinima Int      @default(5)
+  unidade          String   @default("Unidade")
+  localId          String?
+  local            Local?   @relation(fields: [localId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  senha     String
+  perfil    String   @default("PROFESSOR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

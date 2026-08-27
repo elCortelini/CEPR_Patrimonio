@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏫 Sistema de Controle Patrimonial & Almoxarifado
+### **Centro Educacional Pedro Rizzi**
 
-## Getting Started
+Sistema moderno, responsivo e intuitivo desenvolvido em **Next.js**, **Tailwind CSS** e **SQLite (Prisma ORM)** para a gestão completa do acervo patrimonial, salas, empréstimos temporários, chamados de manutenção, estoque de almoxarifado e emissão de relatórios oficiais.
 
-First, run the development server:
+---
 
+## ✨ Funcionalidades Principais
+
+1. **📦 Cadastro Patrimonial com Código de 6 Dígitos**
+   - Número de tombamento fixo numericamente formatado (ex: `000123`).
+   - Campos: Código (6 dígitos), Descrição, Data de entrada, Origem da verba (PDDE, FDE, Prefeitura, APMF, etc.), Observação, Local vinculado e Baixa.
+2. **🏫 Gestão de Salas e Locais Escolares**
+   - Cadastro e organização por blocos (Bloco A, Bloco B, Bloco Adm, Quadra, etc.).
+   - Visualização da quantidade de bens por sala e bloqueio de exclusão em salas com itens vinculados.
+3. **🕒 Controle de Empréstimos Temporários**
+   - Registro de saída de equipamentos móveis (Notebooks, Projetores, Caixas de Som, Kits de Robótica) para professores e funcionários.
+   - Prazo de devolução e baixa em 1 clique.
+4. **🛠️ Chamados e Gestão de Manutenção**
+   - Registro de defeitos relatados com acompanhamento do status (Em Manutenção / Concluído).
+   - Histórico de laudos e custos de conserto por equipamento.
+5. **📋 Processo de Baixa Patrimonial**
+   - Registro formal com data e motivo de descarte/baixa (Inservível, Obsoleto, Furtado, Doado).
+6. **📦 Almoxarifado / Materiais de Consumo**
+   - Controle de estoque de papéis, pincéis de quadro, produtos de limpeza e insumos com alertas visuais para estoque mínimo.
+7. **📄 Relatórios em PDF e Excel**
+   - Emissão de relatórios formatados com cabeçalho oficial do **Centro Educacional Pedro Rizzi**, exportáveis em **PDF** e **Excel (.xlsx)**.
+
+---
+
+## 🚀 Como Executar o Projeto Localmente
+
+### 1. Pré-requisitos
+- Node.js v18 ou superior instalado.
+
+### 2. Instalar Dependências
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Configurar e Popular o Banco de Dados (SQLite)
+```bash
+npx prisma db push
+npx prisma db seed
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Executar em Modo de Desenvolvimento
+```bash
+npm run dev
+```
+Abra o navegador em `http://localhost:3000`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 📤 Como Publicar o Projeto no GitHub
 
-To learn more about Next.js, take a look at the following resources:
+Para subir este repositório para a sua conta no GitHub, execute os seguintes comandos no terminal:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# 1. Adicionar todos os arquivos ao Git
+git add .
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 2. Criar o commit inicial
+git commit -m "feat: Sistema de Controle Patrimonial - CE Pedro Rizzi"
 
-## Deploy on Vercel
+# 3. Alterar o nome da branch principal para main
+git branch -M main
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# 4. Vincular ao seu repositório remoto no GitHub (Substitua a URL abaixo pelo seu link do GitHub)
+git remote add origin https://github.com/SEU_USUARIO/patrimonio-pedro-rizzi.git
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# 5. Enviar os arquivos para o GitHub
+git push -u origin main
+```
+
+---
+
+## 🛠️ Tecnologias Utilizadas
+
+- **Next.js 14+ (App Router)**
+- **TypeScript**
+- **Tailwind CSS v4**
+- **Lucide React** (Ícones)
+- **Prisma ORM** + **SQLite**
+- **jsPDF & jsPDF-AutoTable** (Geração de relatórios PDF)
+- **XLSX** (Planilhas Excel)
