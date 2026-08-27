@@ -9,7 +9,6 @@ import {
   MapPin,
   Clock,
   Wrench,
-  Boxes,
   FileSpreadsheet,
   Menu,
   X,
@@ -27,7 +26,6 @@ export function Sidebar() {
     { name: 'Locais / Salas', href: '/locais', icon: MapPin },
     { name: 'Empréstimos', href: '/emprestimos', icon: Clock },
     { name: 'Manutenções', href: '/manutencoes', icon: Wrench },
-    { name: 'Almoxarifado', href: '/consumiveis', icon: Boxes },
     { name: 'Relatórios PDF/Excel', href: '/relatorios', icon: FileSpreadsheet },
   ];
 
@@ -44,7 +42,7 @@ export function Sidebar() {
               CE Pedro Rizzi
             </span>
             <span className="text-[10px] text-slate-400 block -mt-0.5">
-              Patrimônio & Almoxarifado
+              Controle Patrimonial
             </span>
           </div>
         </div>
@@ -83,7 +81,7 @@ export function Sidebar() {
                 CE Pedro Rizzi
               </h2>
               <span className="text-xs text-slate-400 font-normal block mt-0.5">
-                Patrimônio & Almoxarifado
+                Controle Patrimonial
               </span>
             </div>
           </div>
@@ -96,7 +94,6 @@ export function Sidebar() {
 
             {navItems.map((item) => {
               const Icon = item.icon;
-              // Verificar se a rota atual corresponde exatamente ou começa com o href (exceto home)
               const isActive =
                 item.href === '/'
                   ? pathname === '/' || pathname === ''
@@ -134,7 +131,7 @@ export function Sidebar() {
               Centro Educacional Pedro Rizzi
             </p>
             <p className="text-[10px] text-slate-500 mt-0.5">
-              Versão 1.0 — Gestão Escolar
+              Gestão Patrimonial Escolar
             </p>
           </div>
         </div>

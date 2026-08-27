@@ -19,7 +19,7 @@ export interface Patrimonio {
   baixado: boolean;
   dataBaixa?: string | null;
   motivoBaixa?: string | null;
-  fotoUrl?: string | null; // URL ou Base64 da Foto do Patrimônio (opcional)
+  fotoUrl?: string | null;
 }
 
 export interface Emprestimo {
@@ -47,23 +47,11 @@ export interface Manutencao {
   solucao?: string | null;
 }
 
-export interface Consumivel {
-  id: string;
-  nome: string;
-  categoria: string;
-  quantidade: number;
-  quantidadeMinima: number;
-  unidade: string;
-  localId?: string | null;
-  local?: Local | null;
-}
-
 const STORAGE_KEYS = {
   LOCAIS: 'cepr_locais_v1',
   PATRIMONIOS: 'cepr_patrimonios_v1',
   EMPRESTIMOS: 'cepr_emprestimos_v1',
   MANUTENCOES: 'cepr_manutencoes_v1',
-  CONSUMIVEIS: 'cepr_consumiveis_v1',
 };
 
 // Dados Iniciais Escolares
@@ -159,14 +147,6 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     motivoBaixa: 'Inservível / Queimado sem peça',
     fotoUrl: null,
   },
-];
-
-const CONSUMIVEIS_INICIAIS: Consumivel[] = [
-  { id: 'c-1', nome: 'Papel A4 Chamex 75g (Caixa c/ 10)', categoria: 'Papelaria', quantidade: 15, quantidadeMinima: 5, unidade: 'Caixa', localId: 'loc-3' },
-  { id: 'c-2', nome: 'Canetão Quadro Branco Azul (Faber-Castell)', categoria: 'Didático', quantidade: 40, quantidadeMinima: 10, unidade: 'Unidade', localId: 'loc-3' },
-  { id: 'c-3', nome: 'Sabão Líquido Galão 5 Litros', categoria: 'Limpeza', quantidade: 3, quantidadeMinima: 4, unidade: 'Galão', localId: 'loc-5' },
-  { id: 'c-4', nome: 'Copo Descartável 200ml (Pacote c/ 100)', categoria: 'Cozinha', quantidade: 25, quantidadeMinima: 8, unidade: 'Pacote', localId: 'loc-5' },
-  { id: 'c-5', nome: 'Cabo HDMI 2.0 de 5 Metros', categoria: 'TI', quantidade: 6, quantidadeMinima: 2, unidade: 'Unidade', localId: 'loc-1' },
 ];
 
 function isBrowser(): boolean {
@@ -343,52 +323,4 @@ export function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & { id?: 
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(manutencoes));
   return novaManutencao;
-}
-
-// ---------------- GESTÃO DE CONSUMÍVEIS (ALMOXARIFADO) ----------------
-export function getConsumiveisStorage(): Consumivel[] {
-  if (!isBrowser()) return CONSUMIVEIS_INICIAIS;
-  const data = localStorage.getItem(STORAGE_KEYS.CONSUMIVEIS);
-  const locais = getLocaisStorage();
-
-  let list: Consumivel[] = [];
-  if (!data) {
-    list = CONSUMIVEIS_INICIAIS;
-    localStorage.setItem(STORAGE_KEYS.CONSUMIVEIS, JSON.stringify(list));
-  } else {
-    try {
-      list = JSON.parse(data);
-    } catch {
-      list = CONSUMIVEIS_INICIAIS;
-    }
-  }
-
-  return list.map((c) => ({
-    ...c,
-    local: locais.find((l) => l.id === c.localId) || null,
-  }));
-}
-
-export function saveConsumivelStorage(consumivel: Omit<Consumivel, 'id'> & { id?: string }): Consumivel {
-  const list = getConsumiveisStorage().map(({ local, ...c }) => c);
-  let novo: Consumivel;
-
-  if (consumivel.id) {
-    const idx = list.findIndex((c) => c.id === consumivel.id);
-    if (idx >= 0) list[idx] = consumivel as Consumivel;
-    novo = consumivel as Consumivel;
-  } else {
-    novo = { ...consumivel, id: `cons-${Date.now()}` };
-    list.push(novo);
-  }
-
-  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.CONSUMIVEIS, JSON.stringify(list));
-  return novo;
-}
-
-export function deleteConsumivelStorage(id: string): void {
-  const list = getConsumiveisStorage()
-    .filter((c) => c.id !== id)
-    .map(({ local, ...c }) => c);
-  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.CONSUMIVEIS, JSON.stringify(list));
 }

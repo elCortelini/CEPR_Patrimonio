@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock,
   Wrench,
-  AlertTriangle,
   MapPin,
   PlusCircle,
   FileText,
@@ -18,7 +17,6 @@ import {
   getPatrimoniosStorage,
   getLocaisStorage,
   getEmprestimosStorage,
-  getConsumiveisStorage,
 } from '@/lib/storage';
 
 interface DashboardData {
@@ -29,9 +27,7 @@ interface DashboardData {
     emManutencao: number;
     baixados: number;
     totalLocais: number;
-    itensBaixoEstoqueCount: number;
   };
-  consumiveisCriticos: any[];
   ultimosPatrimonios: any[];
   emprestimosAtivos: any[];
   locaisComPatrimonio: any[];
@@ -54,21 +50,18 @@ export default function DashboardPage() {
         return;
       }
     } catch {
-      // Fallback para modo estático Client-Side (GitHub Pages)
+      // Fallback estático
     }
 
-    // Modo Client-Side (Storage Local)
     const patrimonios = getPatrimoniosStorage();
     const locais = getLocaisStorage();
     const emprestimos = getEmprestimosStorage();
-    const consumiveis = getConsumiveisStorage();
 
     const emUso = patrimonios.filter((p) => p.status === 'EM_USO' && !p.baixado).length;
     const emprestados = patrimonios.filter((p) => p.status === 'EMPRESTADO' && !p.baixado).length;
     const emManutencao = patrimonios.filter((p) => p.status === 'EM_MANUTENCAO' && !p.baixado).length;
     const baixados = patrimonios.filter((p) => p.baixado).length;
 
-    const consumiveisCriticos = consumiveis.filter((c) => c.quantidade <= c.quantidadeMinima);
     const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO');
 
     const locaisComPatrimonio = locais.map((loc) => ({
@@ -86,9 +79,7 @@ export default function DashboardPage() {
         emManutencao,
         baixados,
         totalLocais: locais.length,
-        itensBaixoEstoqueCount: consumiveisCriticos.length,
       },
-      consumiveisCriticos: consumiveisCriticos.slice(0, 5),
       ultimosPatrimonios: patrimonios.slice(-5).reverse(),
       emprestimosAtivos,
       locaisComPatrimonio,
@@ -112,7 +103,6 @@ export default function DashboardPage() {
     emManutencao: 0,
     baixados: 0,
     totalLocais: 0,
-    itensBaixoEstoqueCount: 0,
   };
 
   return (
@@ -192,35 +182,6 @@ export default function DashboardPage() {
           <p className="text-xs text-slate-500 mt-1">Aguardando ou em reparo</p>
         </div>
       </div>
-
-      {/* Alerta de Estoque Baixo Almoxarifado */}
-      {data?.consumiveisCriticos && data.consumiveisCriticos.length > 0 && (
-        <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-5 text-amber-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-6 w-6 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-bold text-amber-300">Atenção no Almoxarifado!</h3>
-              <p className="text-sm text-amber-200/90 mt-0.5">
-                Existem {data.consumiveisCriticos.length} itens de consumo abaixo ou no limite do estoque mínimo!
-              </p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {data.consumiveisCriticos.map((item) => (
-                  <span key={item.id} className="bg-amber-900/60 border border-amber-700 text-amber-100 text-xs px-2.5 py-1 rounded-md font-medium">
-                    {item.nome}: {item.quantidade} {item.unidade} (Mín: {item.quantidadeMinima})
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <Link
-            href="/consumiveis"
-            className="self-start md:self-center bg-amber-600 hover:bg-amber-500 text-slate-950 px-4 py-2 rounded-lg font-bold text-sm shrink-0 transition-colors"
-          >
-            Ir ao Almoxarifado
-          </Link>
-        </div>
-      )}
 
       {/* Grid Principal - 2 Colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
