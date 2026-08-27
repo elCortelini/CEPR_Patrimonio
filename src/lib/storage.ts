@@ -19,6 +19,7 @@ export interface Patrimonio {
   baixado: boolean;
   dataBaixa?: string | null;
   motivoBaixa?: string | null;
+  fotoUrl?: string | null; // URL ou Base64 da Foto do Patrimônio (opcional)
 }
 
 export interface Emprestimo {
@@ -65,7 +66,7 @@ const STORAGE_KEYS = {
   CONSUMIVEIS: 'cepr_consumiveis_v1',
 };
 
-// Dados Iniciais Escolares (Caso o armazenamento esteja vazio)
+// Dados Iniciais Escolares
 const LOCAIS_INICIAIS: Local[] = [
   { id: 'loc-1', nome: 'Laboratório de Informática', bloco: 'Bloco A', descricao: 'Computadores e tecnologia' },
   { id: 'loc-2', nome: 'Biblioteca Escola Pedro Rizzi', bloco: 'Bloco A', descricao: 'Acervo de livros e mesas de estudo' },
@@ -88,6 +89,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-1',
     status: 'EM_USO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000102',
@@ -98,6 +100,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-3',
     status: 'EM_USO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000103',
@@ -108,6 +111,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-2',
     status: 'EM_USO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000104',
@@ -118,6 +122,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-4',
     status: 'EM_USO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000105',
@@ -128,6 +133,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-9',
     status: 'EM_USO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000106',
@@ -138,6 +144,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     localId: 'loc-5',
     status: 'EM_MANUTENCAO',
     baixado: false,
+    fotoUrl: null,
   },
   {
     codigo: '000107',
@@ -150,6 +157,7 @@ const PATRIMONIOS_INICIAIS: Patrimonio[] = [
     baixado: true,
     dataBaixa: '2026-01-15',
     motivoBaixa: 'Inservível / Queimado sem peça',
+    fotoUrl: null,
   },
 ];
 
@@ -223,7 +231,6 @@ export function getPatrimoniosStorage(): Patrimonio[] {
     }
   }
 
-  // Vincular objetos de local
   return patrimonios.map((p) => ({
     ...p,
     local: locais.find((l) => l.id === p.localId) || { id: p.localId, nome: 'Local Desconhecido' },
@@ -285,7 +292,6 @@ export function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { id?: s
     emprestimos.push(novoEmprestimo);
   }
 
-  // Atualizar status do patrimônio correspondente
   const patrimonios = getPatrimoniosStorage();
   const pat = patrimonios.find((p) => p.codigo === novoEmprestimo.patrimonioCodigo);
   if (pat) {
@@ -328,7 +334,6 @@ export function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & { id?: 
     manutencoes.push(novaManutencao);
   }
 
-  // Atualizar status do patrimônio correspondente
   const patrimonios = getPatrimoniosStorage();
   const pat = patrimonios.find((p) => p.codigo === novaManutencao.patrimonioCodigo);
   if (pat) {

@@ -14,6 +14,9 @@ import {
   MapPin,
   CheckCircle2,
   X,
+  Camera,
+  Image as ImageIcon,
+  Eye,
 } from 'lucide-react';
 import { gerarPDFPatrimonio } from '@/lib/pdfGenerator';
 import { exportarExcelPatrimonio } from '@/lib/excelGenerator';
@@ -25,6 +28,42 @@ import {
   Patrimonio,
   Local,
 } from '@/lib/storage';
+
+function compressImage(file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
 
 function PatrimoniosContent() {
   const searchParams = useSearchParams();
@@ -43,7 +82,9 @@ function PatrimoniosContent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isBaixaModalOpen, setIsBaixaModalOpen] = useState(false);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const [patrimonioSelecionado, setPatrimonioSelecionado] = useState<Patrimonio | null>(null);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -53,6 +94,7 @@ function PatrimoniosContent() {
     origem: 'Verba PDDE',
     observacao: '',
     localId: '',
+    fotoUrl: '' as string | null,
   });
 
   const [baixaFormData, setBaixaFormData] = useState({
@@ -86,7 +128,7 @@ function PatrimoniosContent() {
         return;
       }
     } catch {
-      // Fallback estático
+      // Fallback
     }
     const locs = getLocaisStorage();
     setLocais(locs);
@@ -113,10 +155,9 @@ function PatrimoniosContent() {
         return;
       }
     } catch {
-      // Fallback estático
+      // Fallback
     }
 
-    // Filtrar localmente em modo GitHub Pages
     let result = getPatrimoniosStorage();
 
     if (search) {
@@ -158,6 +199,7 @@ function PatrimoniosContent() {
       origem: 'Verba PDDE',
       observacao: '',
       localId: locais.length > 0 ? locais[0].id : '',
+      fotoUrl: null,
     });
     setErrorMsg('');
     setIsModalOpen(true);
@@ -173,6 +215,7 @@ function PatrimoniosContent() {
       origem: p.origem,
       observacao: p.observacao || '',
       localId: p.localId,
+      fotoUrl: p.fotoUrl || null,
     });
     setErrorMsg('');
     setIsModalOpen(true);
@@ -186,6 +229,25 @@ function PatrimoniosContent() {
     });
     setErrorMsg('');
     setIsBaixaModalOpen(true);
+  }
+
+  function verFoto(url: string, p: Patrimonio) {
+    setSelectedPhotoUrl(url);
+    setPatrimonioSelecionado(p);
+    setIsPhotoViewerOpen(true);
+  }
+
+  async function handleFotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressedBase64 = await compressImage(file);
+      setFormData((prev) => ({ ...prev, fotoUrl: compressedBase64 }));
+    } catch (err) {
+      console.error('Erro ao processar imagem:', err);
+      setErrorMsg('Não foi possível carregar esta imagem.');
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -218,6 +280,7 @@ function PatrimoniosContent() {
       localId: formData.localId,
       status: isEditMode && patrimonioSelecionado ? patrimonioSelecionado.status : 'EM_USO',
       baixado: isEditMode && patrimonioSelecionado ? patrimonioSelecionado.baixado : false,
+      fotoUrl: formData.fotoUrl,
     };
 
     try {
@@ -238,10 +301,9 @@ function PatrimoniosContent() {
         return;
       }
     } catch {
-      // Fallback estático
+      // Fallback
     }
 
-    // Salvar no storage local (GitHub Pages)
     savePatrimonioStorage(payload);
     setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
     setIsModalOpen(false);
@@ -352,7 +414,7 @@ function PatrimoniosContent() {
             Controle de Patrimônio Escolar
           </h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Gerenciamento por código fixo de 6 dígitos numéricos e salas da escola.
+            Gerenciamento por código fixo de 6 dígitos numéricos, salas e foto opcional.
           </p>
         </div>
 
@@ -467,6 +529,7 @@ function PatrimoniosContent() {
             <table className="w-full text-left text-sm text-slate-300">
               <thead className="bg-slate-800/80 text-slate-300 uppercase text-xs font-semibold">
                 <tr>
+                  <th className="py-3.5 px-4">Foto</th>
                   <th className="py-3.5 px-4">Patrimônio</th>
                   <th className="py-3.5 px-4">Descrição</th>
                   <th className="py-3.5 px-4">Local / Sala</th>
@@ -479,9 +542,34 @@ function PatrimoniosContent() {
               <tbody className="divide-y divide-slate-800">
                 {patrimonios.map((item) => (
                   <tr key={item.codigo} className="hover:bg-slate-800/40 transition-colors">
+                    {/* Foto do Patrimônio */}
+                    <td className="py-3.5 px-4">
+                      {item.fotoUrl ? (
+                        <button
+                          onClick={() => verFoto(item.fotoUrl!, item)}
+                          className="relative group block w-10 h-10 rounded-lg overflow-hidden border border-slate-700 shadow-sm shrink-0"
+                          title="Clique para ver a foto"
+                        >
+                          <img
+                            src={item.fotoUrl}
+                            alt={item.descricao}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="h-4 w-4 text-white" />
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-800/60 flex items-center justify-center text-slate-600 shrink-0">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                      )}
+                    </td>
+
                     <td className="py-3.5 px-4 font-mono font-bold text-blue-400 text-base">
                       {item.codigo}
                     </td>
+
                     <td className="py-3.5 px-4 font-medium text-white max-w-xs">
                       <div>{item.descricao}</div>
                       {item.observacao && (
@@ -495,6 +583,7 @@ function PatrimoniosContent() {
                         </div>
                       )}
                     </td>
+
                     <td className="py-3.5 px-4 text-slate-300">
                       <span className="inline-flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded text-xs">
                         <MapPin className="h-3.5 w-3.5 text-slate-400" />
@@ -544,7 +633,7 @@ function PatrimoniosContent() {
       {/* MODAL: Adicionar / Editar Patrimônio */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
               <h3 className="font-bold text-lg text-white">
                 {isEditMode ? `Editar Patrimônio #${formData.codigo}` : 'Cadastrar Novo Patrimônio'}
@@ -554,13 +643,58 @@ function PatrimoniosContent() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
               {errorMsg && (
                 <div className="bg-rose-950/80 border border-rose-800 text-rose-200 text-xs p-3 rounded-lg">
                   {errorMsg}
                 </div>
               )}
 
+              {/* Upload de Foto Opcional */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                  Foto do Patrimônio (Opcional - Câmera ou Arquivos)
+                </label>
+                <div className="flex items-center space-x-4">
+                  {formData.fotoUrl ? (
+                    <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-700 shrink-0">
+                      <img src={formData.fotoUrl} alt="Foto" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, fotoUrl: null })}
+                        className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full hover:bg-rose-500"
+                        title="Remover foto"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-20 h-20 rounded-xl bg-slate-950 border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 shrink-0">
+                      <Camera className="h-6 w-6 text-slate-400 mb-1" />
+                      <span className="text-[10px]">Sem foto</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1">
+                    <label className="cursor-pointer inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-3 py-2 rounded-lg text-xs border border-slate-700 transition-all">
+                      <Camera className="h-4 w-4 text-blue-400" />
+                      <span>{formData.fotoUrl ? 'Alterar Foto' : 'Tirar Foto ou Escolher Arquivo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleFotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Em celulares, abre a câmera ou galeria.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Número do Patrimônio (6 dígitos) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                   Número do Patrimônio (6 dígitos numéricos) *
@@ -580,6 +714,7 @@ function PatrimoniosContent() {
                 </p>
               </div>
 
+              {/* Descrição */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                   Descrição do Item *
@@ -594,6 +729,7 @@ function PatrimoniosContent() {
                 />
               </div>
 
+              {/* Local / Sala */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                   Local / Sala da Escola *
@@ -613,6 +749,7 @@ function PatrimoniosContent() {
                 </select>
               </div>
 
+              {/* Data de Entrada e Origem */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
@@ -648,6 +785,7 @@ function PatrimoniosContent() {
                 </div>
               </div>
 
+              {/* Observação */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                   Observações Adicionais
@@ -661,6 +799,7 @@ function PatrimoniosContent() {
                 ></textarea>
               </div>
 
+              {/* Ações */}
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
@@ -747,6 +886,35 @@ function PatrimoniosContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL / LIGHTBOX: Visualizador da Foto em Tamanho Maior */}
+      {isPhotoViewerOpen && selectedPhotoUrl && patrimonioSelecionado && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+              <div>
+                <h4 className="font-bold text-white text-sm">
+                  Patrimônio #{patrimonioSelecionado.codigo}
+                </h4>
+                <p className="text-xs text-slate-400">{patrimonioSelecionado.descricao}</p>
+              </div>
+              <button
+                onClick={() => setIsPhotoViewerOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 flex items-center justify-center bg-slate-950">
+              <img
+                src={selectedPhotoUrl}
+                alt={patrimonioSelecionado.descricao}
+                className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain shadow-md"
+              />
+            </div>
           </div>
         </div>
       )}
