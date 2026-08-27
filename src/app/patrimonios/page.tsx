@@ -17,26 +17,14 @@ import {
 } from 'lucide-react';
 import { gerarPDFPatrimonio } from '@/lib/pdfGenerator';
 import { exportarExcelPatrimonio } from '@/lib/excelGenerator';
-
-interface Local {
-  id: string;
-  nome: string;
-  bloco?: string | null;
-}
-
-interface Patrimonio {
-  codigo: string;
-  descricao: string;
-  dataEntrada: string;
-  origem: string;
-  observacao?: string | null;
-  localId: string;
-  local: Local;
-  status: string;
-  baixado: boolean;
-  dataBaixa?: string | null;
-  motivoBaixa?: string | null;
-}
+import {
+  getPatrimoniosStorage,
+  getLocaisStorage,
+  savePatrimonioStorage,
+  deletePatrimonioStorage,
+  Patrimonio,
+  Local,
+} from '@/lib/storage';
 
 function PatrimoniosContent() {
   const searchParams = useSearchParams();
@@ -95,14 +83,21 @@ function PatrimoniosContent() {
         if (json.length > 0 && !formData.localId) {
           setFormData((prev) => ({ ...prev, localId: json[0].id }));
         }
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar locais:', err);
+    } catch {
+      // Fallback estático
+    }
+    const locs = getLocaisStorage();
+    setLocais(locs);
+    if (locs.length > 0 && !formData.localId) {
+      setFormData((prev) => ({ ...prev, localId: locs[0].id }));
     }
   }
 
   async function fetchPatrimonios() {
     setLoading(true);
+    let list: Patrimonio[] = [];
     try {
       const queryParams = new URLSearchParams();
       if (search) queryParams.set('search', search);
@@ -112,14 +107,45 @@ function PatrimoniosContent() {
 
       const res = await fetch(`/api/patrimonios?${queryParams.toString()}`);
       if (res.ok) {
-        const json = await res.json();
-        setPatrimonios(json);
+        list = await res.json();
+        setPatrimonios(list);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao buscar patrimônios:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback estático
     }
+
+    // Filtrar localmente em modo GitHub Pages
+    let result = getPatrimoniosStorage();
+
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.codigo.includes(s) ||
+          p.descricao.toLowerCase().includes(s) ||
+          p.origem.toLowerCase().includes(s) ||
+          (p.observacao && p.observacao.toLowerCase().includes(s))
+      );
+    }
+
+    if (filterLocal !== 'TODOS') {
+      result = result.filter((p) => p.localId === filterLocal);
+    }
+
+    if (filterStatus !== 'TODOS') {
+      result = result.filter((p) => p.status === filterStatus);
+    }
+
+    if (filterBaixado === 'true') {
+      result = result.filter((p) => p.baixado);
+    } else if (filterBaixado === 'false') {
+      result = result.filter((p) => !p.baixado);
+    }
+
+    setPatrimonios(result);
+    setLoading(false);
   }
 
   function abrirModalNovo() {
@@ -183,12 +209,18 @@ function PatrimoniosContent() {
       return;
     }
 
-    try {
-      const payload = {
-        ...formData,
-        codigo: codigoFormatado,
-      };
+    const payload: Patrimonio = {
+      codigo: codigoFormatado,
+      descricao: formData.descricao.trim(),
+      dataEntrada: formData.dataEntrada,
+      origem: formData.origem,
+      observacao: formData.observacao ? formData.observacao.trim() : null,
+      localId: formData.localId,
+      status: isEditMode && patrimonioSelecionado ? patrimonioSelecionado.status : 'EM_USO',
+      baixado: isEditMode && patrimonioSelecionado ? patrimonioSelecionado.baixado : false,
+    };
 
+    try {
       const url = isEditMode ? `/api/patrimonios/${codigoFormatado}` : '/api/patrimonios';
       const method = isEditMode ? 'PUT' : 'POST';
 
@@ -198,51 +230,60 @@ function PatrimoniosContent() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao salvar patrimônio.');
+      if (res.ok) {
+        setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
+        setIsModalOpen(false);
+        fetchPatrimonios();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
-      setIsModalOpen(false);
-      fetchPatrimonios();
-
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro de conexão com o servidor.');
+    } catch {
+      // Fallback estático
     }
+
+    // Salvar no storage local (GitHub Pages)
+    savePatrimonioStorage(payload);
+    setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
+    setIsModalOpen(false);
+    fetchPatrimonios();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleConfirmarBaixa(e: React.FormEvent) {
     e.preventDefault();
     if (!patrimonioSelecionado) return;
 
+    const patrimonioBaixado: Patrimonio = {
+      ...patrimonioSelecionado,
+      baixado: true,
+      status: 'BAIXADO',
+      dataBaixa: baixaFormData.dataBaixa,
+      motivoBaixa: baixaFormData.motivoBaixa,
+    };
+
     try {
       const res = await fetch(`/api/patrimonios/${patrimonioSelecionado.codigo}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baixado: true,
-          dataBaixa: baixaFormData.dataBaixa,
-          motivoBaixa: baixaFormData.motivoBaixa,
-        }),
+        body: JSON.stringify(patrimonioBaixado),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setErrorMsg(data.error || 'Erro ao dar baixa.');
+      if (res.ok) {
+        setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
+        setIsBaixaModalOpen(false);
+        fetchPatrimonios();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
-      setIsBaixaModalOpen(false);
-      fetchPatrimonios();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro ao dar baixa no patrimônio.');
+    } catch {
+      // Fallback
     }
+
+    savePatrimonioStorage(patrimonioBaixado);
+    setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
+    setIsBaixaModalOpen(false);
+    fetchPatrimonios();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleExcluir(codigo: string) {
@@ -253,18 +294,20 @@ function PatrimoniosContent() {
         method: 'DELETE',
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || 'Erro ao excluir.');
+      if (res.ok) {
+        setSuccessMsg(`Patrimônio ${codigo} excluído.`);
+        fetchPatrimonios();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Patrimônio ${codigo} excluído.`);
-      fetchPatrimonios();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      alert('Erro ao excluir patrimônio.');
+    } catch {
+      // Fallback
     }
+
+    deletePatrimonioStorage(codigo);
+    setSuccessMsg(`Patrimônio ${codigo} excluído.`);
+    fetchPatrimonios();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   function handleExportarPDF() {

@@ -1,32 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Clock, Plus, CheckCircle, AlertCircle, X, Search, CheckCircle2, UserCheck } from 'lucide-react';
-
-interface EmprestimoItem {
-  id: string;
-  patrimonioCodigo: string;
-  patrimonio: {
-    codigo: string;
-    descricao: string;
-    local: { nome: string };
-  };
-  solicitante: string;
-  cargo?: string | null;
-  dataRetirada: string;
-  previsaoDevolucao: string;
-  dataDevolucao?: string | null;
-  status: string; // ATIVO, DEVOLVIDO, ATRASADO
-  observacao?: string | null;
-}
+import { Clock, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
+import { getEmprestimosStorage, saveEmprestimoStorage, Emprestimo } from '@/lib/storage';
 
 export default function EmprestimosPage() {
-  const [emprestimos, setEmprestimos] = useState<EmprestimoItem[]>([]);
+  const [emprestimos, setEmprestimos] = useState<Emprestimo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDevolucaoModalOpen, setIsDevolucaoModalOpen] = useState(false);
-  const [selectedEmprestimo, setSelectedEmprestimo] = useState<EmprestimoItem | null>(null);
+  const [selectedEmprestimo, setSelectedEmprestimo] = useState<Emprestimo | null>(null);
 
   const [formData, setFormData] = useState({
     patrimonioCodigo: '',
@@ -51,12 +35,16 @@ export default function EmprestimosPage() {
       if (res.ok) {
         const json = await res.json();
         setEmprestimos(json);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao buscar empréstimos:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback
     }
+
+    const list = getEmprestimosStorage();
+    setEmprestimos(list);
+    setLoading(false);
   }
 
   function abrirModalNovo() {
@@ -71,7 +59,7 @@ export default function EmprestimosPage() {
     setIsModalOpen(true);
   }
 
-  function abrirModalDevolucao(emp: EmprestimoItem) {
+  function abrirModalDevolucao(emp: Emprestimo) {
     setSelectedEmprestimo(emp);
     setDevolucaoObs('Devolvido em perfeitas condições');
     setErrorMsg('');
@@ -87,56 +75,75 @@ export default function EmprestimosPage() {
       return;
     }
 
+    const payload = {
+      patrimonioCodigo: formData.patrimonioCodigo.padStart(6, '0'),
+      solicitante: formData.solicitante.trim(),
+      cargo: formData.cargo ? formData.cargo.trim() : null,
+      dataRetirada: new Date().toISOString().split('T')[0],
+      previsaoDevolucao: formData.previsaoDevolucao,
+      status: 'ATIVO',
+      observacao: formData.observacao ? formData.observacao.trim() : null,
+    };
+
     try {
       const res = await fetch('/api/emprestimos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao registrar empréstimo.');
+      if (res.ok) {
+        setSuccessMsg(`Empréstimo do patrimônio #${payload.patrimonioCodigo} registrado com sucesso!`);
+        setIsModalOpen(false);
+        fetchEmprestimos();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Empréstimo do patrimônio #${data.patrimonioCodigo} registrado com sucesso!`);
-      setIsModalOpen(false);
-      fetchEmprestimos();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro de conexão com o servidor.');
+    } catch {
+      // Fallback
     }
+
+    saveEmprestimoStorage(payload);
+    setSuccessMsg(`Empréstimo do patrimônio #${payload.patrimonioCodigo} registrado com sucesso!`);
+    setIsModalOpen(false);
+    fetchEmprestimos();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleConfirmarDevolucao(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedEmprestimo) return;
 
+    const payload = {
+      ...selectedEmprestimo,
+      status: 'DEVOLVIDO',
+      dataDevolucao: new Date().toISOString().split('T')[0],
+      observacao: devolucaoObs ? `${selectedEmprestimo.observacao || ''} | Devolução: ${devolucaoObs}` : selectedEmprestimo.observacao,
+    };
+
     try {
       const res = await fetch('/api/emprestimos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: selectedEmprestimo.id,
-          observacaoDevolucao: devolucaoObs,
-        }),
+        body: JSON.stringify({ id: selectedEmprestimo.id, observacaoDevolucao: devolucaoObs }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setErrorMsg(data.error || 'Erro ao registrar devolução.');
+      if (res.ok) {
+        setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
+        setIsDevolucaoModalOpen(false);
+        fetchEmprestimos();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
-      setIsDevolucaoModalOpen(false);
-      fetchEmprestimos();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro ao registrar devolução.');
+    } catch {
+      // Fallback
     }
+
+    saveEmprestimoStorage(payload);
+    setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
+    setIsDevolucaoModalOpen(false);
+    fetchEmprestimos();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   return (
@@ -204,7 +211,7 @@ export default function EmprestimosPage() {
                   <tr key={emp.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-mono font-bold text-blue-400">#{emp.patrimonioCodigo}</div>
-                      <div className="text-xs text-white font-medium truncate max-w-xs">{emp.patrimonio?.descricao}</div>
+                      <div className="text-xs text-white font-medium truncate max-w-xs">{emp.patrimonio?.descricao || 'Equipamento'}</div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-white">{emp.solicitante}</div>
@@ -351,9 +358,6 @@ export default function EmprestimosPage() {
             </div>
 
             <form onSubmit={handleConfirmarDevolucao} className="p-6 space-y-4">
-              <p className="text-xs text-slate-300">
-                Equipamento: <strong className="text-white">{selectedEmprestimo.patrimonio?.descricao}</strong>
-              </p>
               <p className="text-xs text-slate-300">
                 Solicitante: <strong className="text-white">{selectedEmprestimo.solicitante}</strong>
               </p>

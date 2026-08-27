@@ -2,25 +2,17 @@
 
 import React, { useEffect, useState } from 'react';
 import { Boxes, Plus, Minus, AlertTriangle, CheckCircle2, X, Trash2, Edit } from 'lucide-react';
-
-interface Local {
-  id: string;
-  nome: string;
-}
-
-interface ConsumivelItem {
-  id: string;
-  nome: string;
-  categoria: string;
-  quantidade: number;
-  quantidadeMinima: number;
-  unidade: string;
-  localId?: string | null;
-  local?: Local | null;
-}
+import {
+  getConsumiveisStorage,
+  saveConsumivelStorage,
+  deleteConsumivelStorage,
+  getLocaisStorage,
+  Consumivel,
+  Local,
+} from '@/lib/storage';
 
 export default function ConsumiveisPage() {
-  const [consumiveis, setConsumiveis] = useState<ConsumivelItem[]>([]);
+  const [consumiveis, setConsumiveis] = useState<Consumivel[]>([]);
   const [locais, setLocais] = useState<Local[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,12 +44,16 @@ export default function ConsumiveisPage() {
       if (res.ok) {
         const json = await res.json();
         setConsumiveis(json);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar almoxarifado:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback
     }
+
+    const list = getConsumiveisStorage();
+    setConsumiveis(list);
+    setLoading(false);
   }
 
   async function fetchLocais() {
@@ -66,10 +62,13 @@ export default function ConsumiveisPage() {
       if (res.ok) {
         const json = await res.json();
         setLocais(json);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar locais:', err);
+    } catch {
+      // Fallback
     }
+
+    setLocais(getLocaisStorage());
   }
 
   function abrirModalNovo() {
@@ -87,7 +86,7 @@ export default function ConsumiveisPage() {
     setIsModalOpen(true);
   }
 
-  function abrirModalEditar(item: ConsumivelItem) {
+  function abrirModalEditar(item: Consumivel) {
     setIsEditMode(true);
     setSelectedId(item.id);
     setFormData({
@@ -103,6 +102,11 @@ export default function ConsumiveisPage() {
   }
 
   async function handleAjustarEstoque(id: string, delta: number) {
+    const item = consumiveis.find((c) => c.id === id);
+    if (!item) return;
+
+    const novaQtd = Math.max(0, item.quantidade + delta);
+
     try {
       const res = await fetch('/api/consumiveis', {
         method: 'PUT',
@@ -112,10 +116,14 @@ export default function ConsumiveisPage() {
 
       if (res.ok) {
         fetchConsumiveis();
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao alterar estoque:', err);
+    } catch {
+      // Fallback
     }
+
+    saveConsumivelStorage({ ...item, quantidade: novaQtd });
+    fetchConsumiveis();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -127,9 +135,18 @@ export default function ConsumiveisPage() {
       return;
     }
 
+    const payload = {
+      id: selectedId || undefined,
+      nome: formData.nome.trim(),
+      categoria: formData.categoria.trim(),
+      quantidade: parseInt(formData.quantidade, 10) || 0,
+      quantidadeMinima: parseInt(formData.quantidadeMinima, 10) || 5,
+      unidade: formData.unidade.trim(),
+      localId: formData.localId || null,
+    };
+
     try {
       const method = isEditMode ? 'PUT' : 'POST';
-      const payload = isEditMode ? { ...formData, id: selectedId } : formData;
 
       const res = await fetch('/api/consumiveis', {
         method,
@@ -137,20 +154,22 @@ export default function ConsumiveisPage() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao salvar item.');
+      if (res.ok) {
+        setSuccessMsg(isEditMode ? 'Estoque atualizado!' : 'Novo item adicionado ao almoxarifado!');
+        setIsModalOpen(false);
+        fetchConsumiveis();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(isEditMode ? 'Estoque atualizado!' : 'Novo item adicionado ao almoxarifado!');
-      setIsModalOpen(false);
-      fetchConsumiveis();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro ao conectar com o servidor.');
+    } catch {
+      // Fallback
     }
+
+    saveConsumivelStorage(payload);
+    setSuccessMsg(isEditMode ? 'Estoque atualizado!' : 'Novo item adicionado ao almoxarifado!');
+    setIsModalOpen(false);
+    fetchConsumiveis();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleExcluir(id: string, nome: string) {
@@ -162,10 +181,16 @@ export default function ConsumiveisPage() {
         setSuccessMsg(`Item "${nome}" removido.`);
         fetchConsumiveis();
         setTimeout(() => setSuccessMsg(''), 4000);
+        return;
       }
-    } catch (err) {
-      alert('Erro ao excluir item.');
+    } catch {
+      // Fallback
     }
+
+    deleteConsumivelStorage(id);
+    setSuccessMsg(`Item "${nome}" removido.`);
+    fetchConsumiveis();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   return (

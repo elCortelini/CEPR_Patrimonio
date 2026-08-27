@@ -2,12 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { MapPin, Plus, Edit, Trash2, Package, X, CheckCircle2, Building } from 'lucide-react';
+import { getLocaisStorage, saveLocalStorage, deleteLocalStorage, getPatrimoniosStorage, Local } from '@/lib/storage';
 
-interface LocalItem {
-  id: string;
-  nome: string;
-  bloco?: string | null;
-  descricao?: string | null;
+interface LocalItem extends Local {
   _count?: {
     patrimonios: number;
     consumiveis: number;
@@ -42,12 +39,24 @@ export default function LocaisPage() {
       if (res.ok) {
         const json = await res.json();
         setLocais(json);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao buscar locais:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback
     }
+
+    const patrimonios = getPatrimoniosStorage();
+    const locs = getLocaisStorage().map((l) => ({
+      ...l,
+      _count: {
+        patrimonios: patrimonios.filter((p) => p.localId === l.id).length,
+        consumiveis: 0,
+      },
+    }));
+
+    setLocais(locs);
+    setLoading(false);
   }
 
   function abrirModalNovo() {
@@ -79,6 +88,13 @@ export default function LocaisPage() {
       return;
     }
 
+    const payload = {
+      id: selectedId || undefined,
+      nome: formData.nome.trim(),
+      bloco: formData.bloco,
+      descricao: formData.descricao.trim(),
+    };
+
     try {
       const url = isEditMode ? `/api/locais/${selectedId}` : '/api/locais';
       const method = isEditMode ? 'PUT' : 'POST';
@@ -86,23 +102,25 @@ export default function LocaisPage() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao salvar local.');
+      if (res.ok) {
+        setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
+        setIsModalOpen(false);
+        fetchLocais();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
-      setIsModalOpen(false);
-      fetchLocais();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro ao conectar com o servidor.');
+    } catch {
+      // Fallback
     }
+
+    saveLocalStorage(payload);
+    setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
+    setIsModalOpen(false);
+    fetchLocais();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleExcluir(id: string, nome: string) {
@@ -110,19 +128,20 @@ export default function LocaisPage() {
 
     try {
       const res = await fetch(`/api/locais/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error || 'Erro ao excluir local.');
+      if (res.ok) {
+        setSuccessMsg(`Local "${nome}" excluído.`);
+        fetchLocais();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Local "${nome}" excluído.`);
-      fetchLocais();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      alert('Erro ao conectar ao servidor.');
+    } catch {
+      // Fallback
     }
+
+    deleteLocalStorage(id);
+    setSuccessMsg(`Local "${nome}" excluído.`);
+    fetchLocais();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   return (
@@ -217,9 +236,6 @@ export default function LocaisPage() {
                 <span className="flex items-center gap-1">
                   <Package className="h-4 w-4 text-blue-400" />
                   Patrimônio: <strong className="text-white">{loc._count?.patrimonios || 0}</strong> bens
-                </span>
-                <span className="text-slate-500">
-                  Estoque: {loc._count?.consumiveis || 0}
                 </span>
               </div>
             </div>

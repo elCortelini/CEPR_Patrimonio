@@ -11,10 +11,15 @@ import {
   MapPin,
   PlusCircle,
   FileText,
-  Boxes,
   ArrowRight,
   TrendingUp,
 } from 'lucide-react';
+import {
+  getPatrimoniosStorage,
+  getLocaisStorage,
+  getEmprestimosStorage,
+  getConsumiveisStorage,
+} from '@/lib/storage';
 
 interface DashboardData {
   resumo: {
@@ -46,12 +51,50 @@ export default function DashboardPage() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao buscar dados do dashboard:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback para modo estático Client-Side (GitHub Pages)
     }
+
+    // Modo Client-Side (Storage Local)
+    const patrimonios = getPatrimoniosStorage();
+    const locais = getLocaisStorage();
+    const emprestimos = getEmprestimosStorage();
+    const consumiveis = getConsumiveisStorage();
+
+    const emUso = patrimonios.filter((p) => p.status === 'EM_USO' && !p.baixado).length;
+    const emprestados = patrimonios.filter((p) => p.status === 'EMPRESTADO' && !p.baixado).length;
+    const emManutencao = patrimonios.filter((p) => p.status === 'EM_MANUTENCAO' && !p.baixado).length;
+    const baixados = patrimonios.filter((p) => p.baixado).length;
+
+    const consumiveisCriticos = consumiveis.filter((c) => c.quantidade <= c.quantidadeMinima);
+    const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO');
+
+    const locaisComPatrimonio = locais.map((loc) => ({
+      ...loc,
+      _count: {
+        patrimonios: patrimonios.filter((p) => p.localId === loc.id).length,
+      },
+    })).sort((a, b) => b._count.patrimonios - a._count.patrimonios).slice(0, 6);
+
+    setData({
+      resumo: {
+        totalPatrimonios: patrimonios.length,
+        emUso,
+        emprestados,
+        emManutencao,
+        baixados,
+        totalLocais: locais.length,
+        itensBaixoEstoqueCount: consumiveisCriticos.length,
+      },
+      consumiveisCriticos: consumiveisCriticos.slice(0, 5),
+      ultimosPatrimonios: patrimonios.slice(-5).reverse(),
+      emprestimosAtivos,
+      locaisComPatrimonio,
+    });
+
+    setLoading(false);
   }
 
   if (loading) {
@@ -181,9 +224,8 @@ export default function DashboardPage() {
 
       {/* Grid Principal - 2 Colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Coluna Esquerda (2 de 3): Útimos Patrimônios & Empréstimos */}
+        {/* Coluna Esquerda: Útimos Patrimônios & Empréstimos */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Útimos Patrimônios Cadastrados */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -230,7 +272,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Empréstimos Ativos em Andamento */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -275,7 +316,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Coluna Direita (1 de 3): Resumo por Salas / Locais */}
+        {/* Coluna Direita: Resumo por Salas */}
         <div className="space-y-8">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
@@ -303,7 +344,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Card Resumo Baixa */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
             <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-400" />

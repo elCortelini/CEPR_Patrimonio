@@ -1,31 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Wrench, Plus, CheckCircle, AlertTriangle, X, CheckCircle2 } from 'lucide-react';
-
-interface ManutencaoItem {
-  id: string;
-  patrimonioCodigo: string;
-  patrimonio: {
-    codigo: string;
-    descricao: string;
-    local: { nome: string };
-  };
-  solicitante: string;
-  descricaoProblema: string;
-  dataAbertura: string;
-  status: string; // PENDENTE, EM_MANUTENCAO, CONCLUIDO
-  custo?: number | null;
-  solucao?: string | null;
-}
+import { Wrench, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
+import { getManutencoesStorage, saveManutencaoStorage, Manutencao } from '@/lib/storage';
 
 export default function ManutencoesPage() {
-  const [manutencoes, setManutencoes] = useState<ManutencaoItem[]>([]);
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConcluirModalOpen, setIsConcluirModalOpen] = useState(false);
-  const [selectedManutencao, setSelectedManutencao] = useState<ManutencaoItem | null>(null);
+  const [selectedManutencao, setSelectedManutencao] = useState<Manutencao | null>(null);
 
   const [formData, setFormData] = useState({
     patrimonioCodigo: '',
@@ -52,12 +37,16 @@ export default function ManutencoesPage() {
       if (res.ok) {
         const json = await res.json();
         setManutencoes(json);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao buscar manutenções:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback
     }
+
+    const list = getManutencoesStorage();
+    setManutencoes(list);
+    setLoading(false);
   }
 
   function abrirModalNovo() {
@@ -66,7 +55,7 @@ export default function ManutencoesPage() {
     setIsModalOpen(true);
   }
 
-  function abrirModalConcluir(m: ManutencaoItem) {
+  function abrirModalConcluir(m: Manutencao) {
     setSelectedManutencao(m);
     setConcluirData({ custo: '0', solucao: 'Equipamento consertado e testado' });
     setErrorMsg('');
@@ -82,58 +71,73 @@ export default function ManutencoesPage() {
       return;
     }
 
+    const payload = {
+      patrimonioCodigo: formData.patrimonioCodigo.padStart(6, '0'),
+      solicitante: formData.solicitante.trim(),
+      descricaoProblema: formData.descricaoProblema.trim(),
+      dataAbertura: new Date().toISOString().split('T')[0],
+      status: 'EM_MANUTENCAO',
+    };
+
     try {
       const res = await fetch('/api/manutencoes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao abrir chamado de manutenção.');
+      if (res.ok) {
+        setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${payload.patrimonioCodigo}!`);
+        setIsModalOpen(false);
+        fetchManutencoes();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${data.patrimonioCodigo}!`);
-      setIsModalOpen(false);
-      fetchManutencoes();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro de conexão.');
+    } catch {
+      // Fallback
     }
+
+    saveManutencaoStorage(payload);
+    setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${payload.patrimonioCodigo}!`);
+    setIsModalOpen(false);
+    fetchManutencoes();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleConfirmarConclusao(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedManutencao) return;
 
+    const payload = {
+      ...selectedManutencao,
+      status: 'CONCLUIDO',
+      custo: concluirData.custo ? parseFloat(concluirData.custo) : 0,
+      solucao: concluirData.solucao,
+    };
+
     try {
       const res = await fetch('/api/manutencoes', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: selectedManutencao.id,
-          status: 'CONCLUIDO',
-          custo: concluirData.custo,
-          solucao: concluirData.solucao,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setErrorMsg(data.error || 'Erro ao concluir manutenção.');
+      if (res.ok) {
+        setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
+        setIsConcluirModalOpen(false);
+        fetchManutencoes();
+        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-
-      setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
-      setIsConcluirModalOpen(false);
-      fetchManutencoes();
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } catch (err) {
-      setErrorMsg('Erro ao concluir manutenção.');
+    } catch {
+      // Fallback
     }
+
+    saveManutencaoStorage(payload);
+    setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
+    setIsConcluirModalOpen(false);
+    fetchManutencoes();
+    setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   return (
@@ -201,7 +205,7 @@ export default function ManutencoesPage() {
                   <tr key={m.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-mono font-bold text-blue-400">#{m.patrimonioCodigo}</div>
-                      <div className="text-xs text-white font-medium truncate max-w-xs">{m.patrimonio?.descricao}</div>
+                      <div className="text-xs text-white font-medium truncate max-w-xs">{m.patrimonio?.descricao || 'Equipamento'}</div>
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-200 max-w-xs">
                       {m.descricaoProblema}
@@ -231,7 +235,7 @@ export default function ManutencoesPage() {
                           className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"
                         >
                           <CheckCircle className="h-3.5 w-3.5" />
-                          Concluir Reparacão
+                          Concluir Reparação
                         </button>
                       )}
                     </td>
@@ -338,10 +342,6 @@ export default function ManutencoesPage() {
             </div>
 
             <form onSubmit={handleConfirmarConclusao} className="p-6 space-y-4">
-              <p className="text-xs text-slate-300">
-                Equipamento: <strong className="text-white">{selectedManutencao.patrimonio?.descricao}</strong>
-              </p>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                   Solução / Laudo Técnico *

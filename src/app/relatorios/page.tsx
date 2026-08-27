@@ -1,28 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { FileSpreadsheet, FileText, Filter, MapPin, Package, Download } from 'lucide-react';
+import { FileSpreadsheet, FileText, Filter, Download } from 'lucide-react';
 import { gerarPDFPatrimonio } from '@/lib/pdfGenerator';
 import { exportarExcelPatrimonio } from '@/lib/excelGenerator';
-
-interface Local {
-  id: string;
-  nome: string;
-}
-
-interface Patrimonio {
-  codigo: string;
-  descricao: string;
-  dataEntrada: string;
-  origem: string;
-  observacao?: string | null;
-  localId: string;
-  local: Local;
-  status: string;
-  baixado: boolean;
-  dataBaixa?: string | null;
-  motivoBaixa?: string | null;
-}
+import { getPatrimoniosStorage, getLocaisStorage, Patrimonio, Local } from '@/lib/storage';
 
 export default function RelatoriosPage() {
   const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
@@ -33,7 +15,7 @@ export default function RelatoriosPage() {
   const [filterLocal, setFilterLocal] = useState('TODOS');
   const [filterStatus, setFilterStatus] = useState('TODOS');
   const [filterOrigem, setFilterOrigem] = useState('TODOS');
-  const [filterBaixado, setFilterBaixado] = useState('false'); // 'false' (somente ativos), 'true' (somente baixados), 'TODOS'
+  const [filterBaixado, setFilterBaixado] = useState('false');
 
   useEffect(() => {
     fetchLocais();
@@ -50,14 +32,18 @@ export default function RelatoriosPage() {
       if (res.ok) {
         const json = await res.json();
         setLocais(json);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar locais:', err);
+    } catch {
+      // Fallback
     }
+
+    setLocais(getLocaisStorage());
   }
 
   async function fetchDadosRelatorio() {
     setLoading(true);
+    let list: Patrimonio[] = [];
     try {
       const params = new URLSearchParams();
       if (filterLocal !== 'TODOS') params.set('localId', filterLocal);
@@ -66,19 +52,37 @@ export default function RelatoriosPage() {
 
       const res = await fetch(`/api/patrimonios?${params.toString()}`);
       if (res.ok) {
-        let json: Patrimonio[] = await res.json();
-
+        list = await res.json();
         if (filterOrigem !== 'TODOS') {
-          json = json.filter((item) => item.origem === filterOrigem);
+          list = list.filter((item) => item.origem === filterOrigem);
         }
-
-        setPatrimonios(json);
+        setPatrimonios(list);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar dados:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Fallback
     }
+
+    let result = getPatrimoniosStorage();
+
+    if (filterLocal !== 'TODOS') {
+      result = result.filter((p) => p.localId === filterLocal);
+    }
+    if (filterStatus !== 'TODOS') {
+      result = result.filter((p) => p.status === filterStatus);
+    }
+    if (filterOrigem !== 'TODOS') {
+      result = result.filter((p) => p.origem === filterOrigem);
+    }
+    if (filterBaixado === 'true') {
+      result = result.filter((p) => p.baixado);
+    } else if (filterBaixado === 'false') {
+      result = result.filter((p) => !p.baixado);
+    }
+
+    setPatrimonios(result);
+    setLoading(false);
   }
 
   function handleGerarPDF() {
