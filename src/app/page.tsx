@@ -14,79 +14,34 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import {
-  getPatrimoniosStorage,
-  getLocaisStorage,
-  getEmprestimosStorage,
+  subscribePatrimonios,
+  subscribeLocais,
+  subscribeEmprestimos,
+  Patrimonio,
+  Local,
+  Emprestimo,
 } from '@/lib/storage';
 
-interface DashboardData {
-  resumo: {
-    totalPatrimonios: number;
-    emUso: number;
-    emprestados: number;
-    emManutencao: number;
-    baixados: number;
-    totalLocais: number;
-  };
-  ultimosPatrimonios: any[];
-  emprestimosAtivos: any[];
-  locaisComPatrimonio: any[];
-}
-
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
+  const [locais, setLocais] = useState<Local[]>([]);
+  const [emprestimos, setEmprestimos] = useState<Emprestimo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  async function fetchDashboardData() {
-    try {
-      const res = await fetch('/api/dashboard');
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-        return;
-      }
-    } catch {
-      // Fallback estático
-    }
-
-    const patrimonios = getPatrimoniosStorage();
-    const locais = getLocaisStorage();
-    const emprestimos = getEmprestimosStorage();
-
-    const emUso = patrimonios.filter((p) => p.status === 'EM_USO' && !p.baixado).length;
-    const emprestados = patrimonios.filter((p) => p.status === 'EMPRESTADO' && !p.baixado).length;
-    const emManutencao = patrimonios.filter((p) => p.status === 'EM_MANUTENCAO' && !p.baixado).length;
-    const baixados = patrimonios.filter((p) => p.baixado).length;
-
-    const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO');
-
-    const locaisComPatrimonio = locais.map((loc) => ({
-      ...loc,
-      _count: {
-        patrimonios: patrimonios.filter((p) => p.localId === loc.id).length,
-      },
-    })).sort((a, b) => b._count.patrimonios - a._count.patrimonios).slice(0, 6);
-
-    setData({
-      resumo: {
-        totalPatrimonios: patrimonios.length,
-        emUso,
-        emprestados,
-        emManutencao,
-        baixados,
-        totalLocais: locais.length,
-      },
-      ultimosPatrimonios: patrimonios.slice(-5).reverse(),
-      emprestimosAtivos,
-      locaisComPatrimonio,
+    const unsubLocais = subscribeLocais((locs) => setLocais(locs));
+    const unsubEmprestimos = subscribeEmprestimos((emps) => setEmprestimos(emps));
+    const unsubPatrimonios = subscribePatrimonios((pats) => {
+      setPatrimonios(pats);
+      setLoading(false);
     });
 
-    setLoading(false);
-  }
+    return () => {
+      unsubLocais();
+      unsubEmprestimos();
+      unsubPatrimonios();
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -96,14 +51,21 @@ export default function DashboardPage() {
     );
   }
 
-  const resumo = data?.resumo || {
-    totalPatrimonios: 0,
-    emUso: 0,
-    emprestados: 0,
-    emManutencao: 0,
-    baixados: 0,
-    totalLocais: 0,
-  };
+  const emUso = patrimonios.filter((p) => p.status === 'EM_USO' && !p.baixado).length;
+  const emprestados = patrimonios.filter((p) => p.status === 'EMPRESTADO' && !p.baixado).length;
+  const emManutencao = patrimonios.filter((p) => p.status === 'EM_MANUTENCAO' && !p.baixado).length;
+  const baixados = patrimonios.filter((p) => p.baixado).length;
+
+  const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO');
+
+  const locaisComPatrimonio = locais.map((loc) => ({
+    ...loc,
+    _count: {
+      patrimonios: patrimonios.filter((p) => p.localId === loc.id).length,
+    },
+  })).sort((a, b) => b._count.patrimonios - a._count.patrimonios).slice(0, 6);
+
+  const ultimosPatrimonios = [...patrimonios].slice(-5).reverse();
 
   return (
     <div className="space-y-8">
@@ -145,7 +107,7 @@ export default function DashboardPage() {
               <Package className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-white mt-3">{resumo.totalPatrimonios}</p>
+          <p className="text-3xl font-extrabold text-white mt-3">{patrimonios.length}</p>
           <p className="text-xs text-slate-500 mt-1">Patrimônios cadastrados na escola</p>
         </div>
 
@@ -156,7 +118,7 @@ export default function DashboardPage() {
               <CheckCircle2 className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-emerald-400 mt-3">{resumo.emUso}</p>
+          <p className="text-3xl font-extrabold text-emerald-400 mt-3">{emUso}</p>
           <p className="text-xs text-slate-500 mt-1">Ativos alocados em locais</p>
         </div>
 
@@ -167,7 +129,7 @@ export default function DashboardPage() {
               <Clock className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-amber-400 mt-3">{resumo.emprestados}</p>
+          <p className="text-3xl font-extrabold text-amber-400 mt-3">{emprestados}</p>
           <p className="text-xs text-slate-500 mt-1">Uso temporário por docentes/staff</p>
         </div>
 
@@ -178,7 +140,7 @@ export default function DashboardPage() {
               <Wrench className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-rose-400 mt-3">{resumo.emManutencao}</p>
+          <p className="text-3xl font-extrabold text-rose-400 mt-3">{emManutencao}</p>
           <p className="text-xs text-slate-500 mt-1">Aguardando ou em reparo</p>
         </div>
       </div>
@@ -210,7 +172,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {data?.ultimosPatrimonios.map((item) => (
+                  {ultimosPatrimonios.map((item) => (
                     <tr key={item.codigo} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-blue-400">{item.codigo}</td>
                       <td className="py-3 px-4 font-medium text-white max-w-xs truncate">{item.descricao}</td>
@@ -221,7 +183,7 @@ export default function DashboardPage() {
                       </td>
                     </tr>
                   ))}
-                  {(!data?.ultimosPatrimonios || data.ultimosPatrimonios.length === 0) && (
+                  {ultimosPatrimonios.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-slate-500">
                         Nenhum patrimônio cadastrado.
@@ -245,7 +207,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {data?.emprestimosAtivos.map((emp) => (
+              {emprestimosAtivos.map((emp) => (
                 <div
                   key={emp.id}
                   className="bg-slate-800/50 border border-slate-700/60 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -268,7 +230,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
-              {(!data?.emprestimosAtivos || data.emprestimosAtivos.length === 0) && (
+              {emprestimosAtivos.length === 0 && (
                 <p className="text-center py-6 text-slate-500 text-sm">
                   Nenhum equipamento emprestado no momento.
                 </p>
@@ -286,12 +248,12 @@ export default function DashboardPage() {
                 Patrimônio por Local
               </h2>
               <Link href="/locais" className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
-                Ver todos ({resumo.totalLocais})
+                Ver todos ({locais.length})
               </Link>
             </div>
 
             <div className="space-y-3">
-              {data?.locaisComPatrimonio.map((loc) => (
+              {locaisComPatrimonio.map((loc) => (
                 <div key={loc.id} className="flex items-center justify-between p-3 bg-slate-800/40 rounded-lg border border-slate-800">
                   <div>
                     <span className="font-semibold text-slate-200 text-sm block">{loc.nome}</span>
@@ -315,7 +277,7 @@ export default function DashboardPage() {
             </p>
             <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg border border-slate-800">
               <span className="text-sm text-slate-400">Total de Bens Baixados</span>
-              <span className="text-xl font-extrabold text-purple-400">{resumo.baixados}</span>
+              <span className="text-xl font-extrabold text-purple-400">{baixados}</span>
             </div>
             <Link
               href="/patrimonios?status=BAIXADO"

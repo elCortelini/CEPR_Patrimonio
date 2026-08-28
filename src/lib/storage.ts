@@ -1,12 +1,5 @@
-import { db } from './firebase';
-import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  getDocs,
-} from 'firebase/firestore';
+import { rtdb } from './firebase';
+import { ref, onValue, set, remove } from 'firebase/database';
 
 export interface Local {
   id: string;
@@ -161,125 +154,159 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-function hasFirebaseConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
-}
-
-// ---------------- LISTENERS DE TEMPO REAL (FIREBASE) ----------------
+// ---------------- LISTENERS DE TEMPO REAL (FIREBASE REALTIME DATABASE) ----------------
 
 export function subscribeLocais(callback: (locais: Local[]) => void) {
-  if (hasFirebaseConfigured()) {
-    try {
-      return onSnapshot(collection(db, 'locais'), (snapshot) => {
-        if (snapshot.empty) {
-          // Se o banco online estiver vazio, popula com locais iniciais
-          LOCAIS_INICIAIS.forEach((loc) => setDoc(doc(db, 'locais', loc.id), loc));
+  if (!isBrowser()) return () => {};
+
+  try {
+    const locaisRef = ref(rtdb, 'locais');
+    return onValue(
+      locaisRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        if (!val) {
+          // Se o banco estiver vazio, grava locais iniciais
+          const initialMap: Record<string, Local> = {};
+          LOCAIS_INICIAIS.forEach((l) => (initialMap[l.id] = l));
+          set(ref(rtdb, 'locais'), initialMap);
           callback(LOCAIS_INICIAIS);
         } else {
-          const list: Local[] = snapshot.docs.map((docSnap) => docSnap.data() as Local);
-          if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(list));
+          const list: Local[] = Object.values(val);
+          localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(list));
           callback(list);
         }
-      });
-    } catch (e) {
-      console.error('Erro no listener do Firebase:', e);
-    }
+      },
+      (error) => {
+        console.error('Erro ao ler locais do Firebase:', error);
+        callback(getLocaisStorage());
+      }
+    );
+  } catch (e) {
+    console.error('Erro de conexão Firebase:', e);
+    callback(getLocaisStorage());
+    return () => {};
   }
-
-  callback(getLocaisStorage());
-  return () => {};
 }
 
 export function subscribePatrimonios(callback: (patrimonios: Patrimonio[]) => void) {
-  if (hasFirebaseConfigured()) {
-    try {
-      return onSnapshot(collection(db, 'patrimonios'), (snapshot) => {
+  if (!isBrowser()) return () => {};
+
+  try {
+    const patsRef = ref(rtdb, 'patrimonios');
+    return onValue(
+      patsRef,
+      (snapshot) => {
+        const val = snapshot.val();
         const locais = getLocaisStorage();
-        if (snapshot.empty) {
-          PATRIMONIOS_INICIAIS.forEach((pat) => setDoc(doc(db, 'patrimonios', pat.codigo), pat));
+
+        if (!val) {
+          const initialMap: Record<string, Patrimonio> = {};
+          PATRIMONIOS_INICIAIS.forEach((p) => (initialMap[p.codigo] = p));
+          set(ref(rtdb, 'patrimonios'), initialMap);
           const result = PATRIMONIOS_INICIAIS.map((p) => ({
             ...p,
             local: locais.find((l) => l.id === p.localId) || { id: p.localId, nome: 'Local Desconhecido' },
           }));
           callback(result);
         } else {
-          const list: Patrimonio[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data() as Patrimonio;
-            return {
-              ...data,
-              local: locais.find((l) => l.id === data.localId) || { id: data.localId, nome: 'Local Desconhecido' },
-            };
-          });
-          if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(snapshot.docs.map(d => d.data())));
+          const rawList: Patrimonio[] = Object.values(val);
+          const list = rawList.map((p) => ({
+            ...p,
+            local: locais.find((l) => l.id === p.localId) || { id: p.localId, nome: 'Local Desconhecido' },
+          }));
+          localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(rawList));
           callback(list);
         }
-      });
-    } catch (e) {
-      console.error('Erro no listener do Firebase:', e);
-    }
+      },
+      (error) => {
+        console.error('Erro ao ler patrimônios do Firebase:', error);
+        callback(getPatrimoniosStorage());
+      }
+    );
+  } catch (e) {
+    console.error('Erro de conexão Firebase:', e);
+    callback(getPatrimoniosStorage());
+    return () => {};
   }
-
-  callback(getPatrimoniosStorage());
-  return () => {};
 }
 
 export function subscribeEmprestimos(callback: (emprestimos: Emprestimo[]) => void) {
-  if (hasFirebaseConfigured()) {
-    try {
-      return onSnapshot(collection(db, 'emprestimos'), (snapshot) => {
-        const patrimonios = getPatrimoniosStorage();
-        const list: Emprestimo[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as Emprestimo;
-          return {
-            ...data,
-            patrimonio: patrimonios.find((p) => p.codigo === data.patrimonioCodigo),
-          };
-        });
-        if (isBrowser()) localStorage.setItem(STORAGE_KEYS.EMPRESTIMOS, JSON.stringify(snapshot.docs.map(d => d.data())));
-        callback(list);
-      });
-    } catch (e) {
-      console.error('Erro no listener do Firebase:', e);
-    }
-  }
+  if (!isBrowser()) return () => {};
 
-  callback(getEmprestimosStorage());
-  return () => {};
+  try {
+    const empRef = ref(rtdb, 'emprestimos');
+    return onValue(
+      empRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        const patrimonios = getPatrimoniosStorage();
+
+        if (!val) {
+          callback([]);
+        } else {
+          const rawList: Emprestimo[] = Object.values(val);
+          const list = rawList.map((emp) => ({
+            ...emp,
+            patrimonio: patrimonios.find((p) => p.codigo === emp.patrimonioCodigo),
+          }));
+          localStorage.setItem(STORAGE_KEYS.EMPRESTIMOS, JSON.stringify(rawList));
+          callback(list);
+        }
+      },
+      (error) => {
+        console.error('Erro ao ler empréstimos do Firebase:', error);
+        callback(getEmprestimosStorage());
+      }
+    );
+  } catch (e) {
+    console.error('Erro de conexão Firebase:', e);
+    callback(getEmprestimosStorage());
+    return () => {};
+  }
 }
 
 export function subscribeManutencoes(callback: (manutencoes: Manutencao[]) => void) {
-  if (hasFirebaseConfigured()) {
-    try {
-      return onSnapshot(collection(db, 'manutencoes'), (snapshot) => {
-        const patrimonios = getPatrimoniosStorage();
-        const list: Manutencao[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as Manutencao;
-          return {
-            ...data,
-            patrimonio: patrimonios.find((p) => p.codigo === data.patrimonioCodigo),
-          };
-        });
-        if (isBrowser()) localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(snapshot.docs.map(d => d.data())));
-        callback(list);
-      });
-    } catch (e) {
-      console.error('Erro no listener do Firebase:', e);
-    }
-  }
+  if (!isBrowser()) return () => {};
 
-  callback(getManutencoesStorage());
-  return () => {};
+  try {
+    const manRef = ref(rtdb, 'manutencoes');
+    return onValue(
+      manRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        const patrimonios = getPatrimoniosStorage();
+
+        if (!val) {
+          callback([]);
+        } else {
+          const rawList: Manutencao[] = Object.values(val);
+          const list = rawList.map((m) => ({
+            ...m,
+            patrimonio: patrimonios.find((p) => p.codigo === m.patrimonioCodigo),
+          }));
+          localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(rawList));
+          callback(list);
+        }
+      },
+      (error) => {
+        console.error('Erro ao ler manutenções do Firebase:', error);
+        callback(getManutencoesStorage());
+      }
+    );
+  } catch (e) {
+    console.error('Erro de conexão Firebase:', e);
+    callback(getManutencoesStorage());
+    return () => {};
+  }
 }
 
-// ---------------- OPERAÇÕES LOCAIS E FIREBASE ----------------
+// ---------------- OPERAÇÕES DE ESCRITA E LEITURA ----------------
 
 export function getLocaisStorage(): Local[] {
   if (!isBrowser()) return LOCAIS_INICIAIS;
   const data = localStorage.getItem(STORAGE_KEYS.LOCAIS);
-  if (!data) {
-    localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(LOCAIS_INICIAIS));
-    return LOCAIS_INICIAIS;
-  }
+  if (!data) return LOCAIS_INICIAIS;
   try {
     return JSON.parse(data);
   } catch {
@@ -298,12 +325,10 @@ export async function saveLocalStorage(local: Omit<Local, 'id'> & { id?: string 
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(locais));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await setDoc(doc(db, 'locais', id), novoLocal);
-    } catch (e) {
-      console.error('Erro ao salvar local no Firebase:', e);
-    }
+  try {
+    await set(ref(rtdb, `locais/${id}`), novoLocal);
+  } catch (e) {
+    console.error('Erro ao salvar local no Realtime Database:', e);
   }
 
   return novoLocal;
@@ -313,12 +338,10 @@ export async function deleteLocalStorage(id: string): Promise<void> {
   const locais = getLocaisStorage().filter((l) => l.id !== id);
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(locais));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await deleteDoc(doc(db, 'locais', id));
-    } catch (e) {
-      console.error('Erro ao deletar local no Firebase:', e);
-    }
+  try {
+    await remove(ref(rtdb, `locais/${id}`));
+  } catch (e) {
+    console.error('Erro ao deletar local no Realtime Database:', e);
   }
 }
 
@@ -330,7 +353,6 @@ export function getPatrimoniosStorage(): Patrimonio[] {
   let patrimonios: Patrimonio[] = [];
   if (!data) {
     patrimonios = PATRIMONIOS_INICIAIS;
-    localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
   } else {
     try {
       patrimonios = JSON.parse(data);
@@ -360,12 +382,10 @@ export async function savePatrimonioStorage(patrimonio: Patrimonio): Promise<Pat
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await setDoc(doc(db, 'patrimonios', patrimonio.codigo), cleanPatrimonio);
-    } catch (e) {
-      console.error('Erro ao salvar patrimônio no Firebase:', e);
-    }
+  try {
+    await set(ref(rtdb, `patrimonios/${patrimonio.codigo}`), cleanPatrimonio);
+  } catch (e) {
+    console.error('Erro ao salvar patrimônio no Realtime Database:', e);
   }
 
   return patrimonio;
@@ -377,12 +397,10 @@ export async function deletePatrimonioStorage(codigo: string): Promise<void> {
     .map(({ local, ...p }) => p);
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await deleteDoc(doc(db, 'patrimonios', codigo));
-    } catch (e) {
-      console.error('Erro ao deletar patrimônio no Firebase:', e);
-    }
+  try {
+    await remove(ref(rtdb, `patrimonios/${codigo}`));
+  } catch (e) {
+    console.error('Erro ao deletar patrimônio no Realtime Database:', e);
   }
 }
 
@@ -413,7 +431,6 @@ export async function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { 
   if (idx >= 0) emprestimos[idx] = cleanEmp;
   else emprestimos.push(cleanEmp);
 
-  // Atualizar status do patrimônio correspondente
   const patrimonios = getPatrimoniosStorage();
   const pat = patrimonios.find((p) => p.codigo === cleanEmp.patrimonioCodigo);
   if (pat) {
@@ -423,12 +440,10 @@ export async function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { 
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.EMPRESTIMOS, JSON.stringify(emprestimos));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await setDoc(doc(db, 'emprestimos', id), cleanEmp);
-    } catch (e) {
-      console.error('Erro ao salvar empréstimo no Firebase:', e);
-    }
+  try {
+    await set(ref(rtdb, `emprestimos/${id}`), cleanEmp);
+  } catch (e) {
+    console.error('Erro ao salvar empréstimo no Realtime Database:', e);
   }
 
   return cleanEmp;
@@ -470,12 +485,10 @@ export async function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & {
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(manutencoes));
 
-  if (hasFirebaseConfigured()) {
-    try {
-      await setDoc(doc(db, 'manutencoes', id), cleanMan);
-    } catch (e) {
-      console.error('Erro ao salvar manutenção no Firebase:', e);
-    }
+  try {
+    await set(ref(rtdb, `manutencoes/${id}`), cleanMan);
+  } catch (e) {
+    console.error('Erro ao salvar manutenção no Realtime Database:', e);
   }
 
   return cleanMan;
