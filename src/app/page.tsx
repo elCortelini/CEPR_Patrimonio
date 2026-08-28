@@ -3,307 +3,270 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
+  GraduationCap,
   Package,
+  Calculator,
+  CalendarDays,
+  ArrowRight,
+  ShieldCheck,
   CheckCircle2,
   Clock,
   Wrench,
-  MapPin,
-  PlusCircle,
-  FileText,
-  ArrowRight,
-  TrendingUp,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import {
   subscribePatrimonios,
-  subscribeLocais,
   subscribeEmprestimos,
+  subscribeManutencoes,
+  getUsuarioAtual,
   Patrimonio,
-  Local,
   Emprestimo,
+  Manutencao,
+  UsuarioSistema,
 } from '@/lib/storage';
 
-export default function DashboardPage() {
+export default function PortalHomePage() {
   const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
-  const [locais, setLocais] = useState<Local[]>([]);
   const [emprestimos, setEmprestimos] = useState<Emprestimo[]>([]);
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
+  const [usuario, setUsuario] = useState<UsuarioSistema | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubLocais = subscribeLocais((locs) => setLocais(locs));
-    const unsubEmprestimos = subscribeEmprestimos((emps) => setEmprestimos(emps));
-    const unsubPatrimonios = subscribePatrimonios((pats) => {
+    const userCurr = getUsuarioAtual();
+    setUsuario(userCurr);
+
+    const unsubPats = subscribePatrimonios((pats) => {
       setPatrimonios(pats);
       setLoading(false);
     });
 
+    const unsubEmps = subscribeEmprestimos((emps) => setEmprestimos(emps));
+    const unsubMans = subscribeManutencoes((mans) => setManutencoes(mans));
+
     return () => {
-      unsubLocais();
-      unsubEmprestimos();
-      unsubPatrimonios();
+      unsubPats();
+      unsubEmps();
+      unsubMans();
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
+  const totalPatrimonios = patrimonios.length;
   const emUso = patrimonios.filter((p) => p.status === 'EM_USO' && !p.baixado).length;
-  const emprestados = patrimonios.filter((p) => p.status === 'EMPRESTADO' && !p.baixado).length;
-  const emManutencao = patrimonios.filter((p) => p.status === 'EM_MANUTENCAO' && !p.baixado).length;
-  const baixados = patrimonios.filter((p) => p.baixado).length;
+  const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO').length;
+  const manutencoesAbertas = manutencoes.filter((m) => m.status !== 'CONCLUIDO').length;
 
-  const emprestimosAtivos = emprestimos.filter((e) => e.status === 'ATIVO');
-
-  const locaisComPatrimonio = locais.map((loc) => ({
-    ...loc,
-    _count: {
-      patrimonios: patrimonios.filter((p) => p.localId === loc.id).length,
+  const sistemas = [
+    {
+      id: 'patrimonio',
+      titulo: 'Controle de Patrimônio Escolar',
+      subtitulo: 'Tombamento de 6 dígitos, Salas, Fotos e Baixas',
+      descricao:
+        'Gestão completa do acervo de bens da escola. Cadastre equipamentos com fotos, controle salas/blocos, movimentações, empréstimos para professores, chamados de manutenção e emita relatórios oficiais em PDF e Excel.',
+      icone: Package,
+      corIcone: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+      corBotao: 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30',
+      link: '/patrimonios',
+      externo: false,
+      badge: 'Tempo Real Ativo',
+      recursos: [
+        'Código de 6 dígitos numéricos',
+        'Foto opcional via Câmera/Arquivos',
+        'Empréstimos & Chamados de Manutenção',
+        'Relatórios em PDF e Excel com timbre escolar',
+      ],
     },
-  })).sort((a, b) => b._count.patrimonios - a._count.patrimonios).slice(0, 6);
-
-  const ultimosPatrimonios = [...patrimonios].slice(-5).reverse();
+    {
+      id: 'contabil',
+      titulo: 'Gestão Contábil & Financeira',
+      subtitulo: 'CEPR-Contábil — Caixa, Entradas e Saídas',
+      descricao:
+        'Sistema de controle financeiro escolar para prestação de contas, verbas (PDDE, FDE, APMF), receitas de eventos, controle de caixa por categorias e demonstrativos em tempo real.',
+      icone: Calculator,
+      corIcone: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+      corBotao: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30',
+      link: 'https://elcortelini.github.io/contabilCEPR/',
+      externo: true,
+      badge: 'Sincronizado na Nuvem',
+      recursos: [
+        'Entradas e Saídas por carteira',
+        'Prestação de contas e categorias',
+        'Acesso seguro via Login do Google',
+        'Relatórios financeiros consolidados',
+      ],
+    },
+    {
+      id: 'agendamento',
+      titulo: 'Agenda de Recursos & Salas',
+      subtitulo: 'Agenda CEPR — Chromebooks, Lousas e Ambientes',
+      descricao:
+        'Agendamento online de espaços pedagógicos (Laboratório de Informática, Sala de Vídeo, Biblioteca) e recursos móveis (Carrinhos de Chromebooks, Lousas Digitais e Projetores).',
+      icone: CalendarDays,
+      corIcone: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
+      corBotao: 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/30',
+      link: 'https://elcortelini.github.io/agendamento-cepr/',
+      externo: true,
+      badge: 'Reserva Online',
+      recursos: [
+        'Agenda por períodos de aula',
+        'Reserva de Chromebooks e Lousas Digitais',
+        'Bloqueio pré-conselho e eventos',
+        'Painel para docentes e coordenação',
+      ],
+    },
+  ];
 
   return (
-    <div className="space-y-8">
-      {/* Cabeçalho da Página */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
-            Painel Geral de Patrimônio
+    <div className="space-y-10 pb-12">
+      {/* Banner de Boas-Vindas do Centro Educacional */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center space-x-2 bg-blue-500/10 border border-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-semibold">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Portal Unificado da Gestão Escolar</span>
+          </div>
+
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
+            Centro Educacional Pedro Rizzi
           </h1>
-          <p className="text-slate-400 mt-1">
-            Centro Educacional Pedro Rizzi — Resumo gerencial e controle em tempo real.
+
+          <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
+            Bem-vindo ao portal integrado de sistemas da escola. Selecione abaixo a plataforma que deseja acessar para gerenciar o patrimônio, as contas ou o agendamento de salas e recursos.
           </p>
-        </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/patrimonios?novo=true"
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-md transition-all"
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>Novo Patrimônio (6 Dígitos)</span>
-          </Link>
-          <Link
-            href="/relatorios"
-            className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-lg text-sm font-semibold border border-slate-700 transition-all"
-          >
-            <FileText className="h-4 w-4" />
-            <span>Emitir Relatórios</span>
-          </Link>
+          {usuario && (
+            <div className="pt-2 flex items-center space-x-3 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                Usuário Conectado: <strong className="text-white">{usuario.nome}</strong> ({usuario.role})
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Cartões de Indicadores */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Total de Bens</span>
-            <div className="bg-blue-900/50 text-blue-400 p-2.5 rounded-lg">
-              <Package className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold text-white mt-3">{patrimonios.length}</p>
-          <p className="text-xs text-slate-500 mt-1">Patrimônios cadastrados na escola</p>
+      {/* Cartões dos 3 Sistemas Escolares */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <GraduationCap className="h-6 w-6 text-blue-400" />
+            Sistemas Disponíveis
+          </h2>
+          <span className="text-xs text-slate-400">3 Plataformas Conectadas</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Em Uso nas Salas</span>
-            <div className="bg-emerald-900/50 text-emerald-400 p-2.5 rounded-lg">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold text-emerald-400 mt-3">{emUso}</p>
-          <p className="text-xs text-slate-500 mt-1">Ativos alocados em locais</p>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Empréstimos Ativos</span>
-            <div className="bg-amber-900/50 text-amber-400 p-2.5 rounded-lg">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold text-amber-400 mt-3">{emprestados}</p>
-          <p className="text-xs text-slate-500 mt-1">Uso temporário por docentes/staff</p>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Em Manutenção</span>
-            <div className="bg-rose-900/50 text-rose-400 p-2.5 rounded-lg">
-              <Wrench className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-3xl font-extrabold text-rose-400 mt-3">{emManutencao}</p>
-          <p className="text-xs text-slate-500 mt-1">Aguardando ou em reparo</p>
-        </div>
-      </div>
-
-      {/* Grid Principal - 2 Colunas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Coluna Esquerda: Útimos Patrimônios & Empréstimos */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Package className="h-5 w-5 text-blue-400" />
-                Últimos Patrimônios Cadastrados
-              </h2>
-              <Link href="/patrimonios" className="text-sm font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                Ver todos <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-300">
-                <thead className="bg-slate-800/80 text-slate-400 uppercase text-xs">
-                  <tr>
-                    <th className="py-3 px-4 rounded-l-lg">Código</th>
-                    <th className="py-3 px-4">Descrição</th>
-                    <th className="py-3 px-4">Local</th>
-                    <th className="py-3 px-4">Origem</th>
-                    <th className="py-3 px-4 rounded-r-lg">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {ultimosPatrimonios.map((item) => (
-                    <tr key={item.codigo} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-400">{item.codigo}</td>
-                      <td className="py-3 px-4 font-medium text-white max-w-xs truncate">{item.descricao}</td>
-                      <td className="py-3 px-4 text-slate-400">{item.local?.nome || '-'}</td>
-                      <td className="py-3 px-4 text-slate-400">{item.origem}</td>
-                      <td className="py-3 px-4">
-                        <StatusBadge status={item.status} baixado={item.baixado} />
-                      </td>
-                    </tr>
-                  ))}
-                  {ultimosPatrimonios.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500">
-                        Nenhum patrimônio cadastrado.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-400" />
-                Empréstimos Ativos em Andamento
-              </h2>
-              <Link href="/emprestimos" className="text-sm font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1">
-                Gerenciar Empréstimos <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              {emprestimosAtivos.map((emp) => (
-                <div
-                  key={emp.id}
-                  className="bg-slate-800/50 border border-slate-700/60 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold bg-blue-950 text-blue-300 px-2 py-0.5 rounded">
-                        #{emp.patrimonioCodigo}
-                      </span>
-                      <h4 className="font-semibold text-white text-sm">{emp.patrimonio?.descricao}</h4>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {sistemas.map((sis) => {
+            const IconeComp = sis.icone;
+            return (
+              <div
+                key={sis.id}
+                className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-6 flex flex-col justify-between transition-all duration-200 shadow-xl group hover:-translate-y-1"
+              >
+                <div className="space-y-4">
+                  {/* Cabeçalho do Card */}
+                  <div className="flex items-start justify-between">
+                    <div className={`p-3 rounded-2xl border ${sis.corIcone}`}>
+                      <IconeComp className="h-7 w-7" />
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Retirado por: <strong className="text-slate-200">{emp.solicitante}</strong> {emp.cargo ? `(${emp.cargo})` : ''}
-                    </p>
+                    <span className="bg-slate-800 text-slate-300 text-[10px] font-bold px-2.5 py-1 rounded-full border border-slate-700">
+                      {sis.badge}
+                    </span>
                   </div>
 
-                  <div className="text-right sm:text-right">
-                    <span className="text-xs text-slate-400 block">Devolução Prevista:</span>
-                    <span className="text-sm font-bold text-amber-300">{emp.previsaoDevolucao}</span>
-                  </div>
-                </div>
-              ))}
-              {emprestimosAtivos.length === 0 && (
-                <p className="text-center py-6 text-slate-500 text-sm">
-                  Nenhum equipamento emprestado no momento.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Coluna Direita: Resumo por Salas */}
-        <div className="space-y-8">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-emerald-400" />
-                Patrimônio por Local
-              </h2>
-              <Link href="/locais" className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1">
-                Ver todos ({locais.length})
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              {locaisComPatrimonio.map((loc) => (
-                <div key={loc.id} className="flex items-center justify-between p-3 bg-slate-800/40 rounded-lg border border-slate-800">
+                  {/* Títulos e Descrição */}
                   <div>
-                    <span className="font-semibold text-slate-200 text-sm block">{loc.nome}</span>
-                    {loc.bloco && <span className="text-xs text-slate-500">{loc.bloco}</span>}
+                    <h3 className="text-lg font-bold text-white group-hover:text-blue-300 transition-colors">
+                      {sis.titulo}
+                    </h3>
+                    <p className="text-xs text-blue-400 font-medium mt-0.5">{sis.subtitulo}</p>
+                    <p className="text-xs text-slate-400 mt-3 leading-relaxed">{sis.descricao}</p>
                   </div>
-                  <span className="bg-slate-800 text-blue-400 font-bold text-xs px-3 py-1.5 rounded-full border border-slate-700">
-                    {loc._count?.patrimonios || 0} itens
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-            <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-purple-400" />
-              Resumo de Baixas Patrimoniais
-            </h3>
-            <p className="text-sm text-slate-400 mb-4">
-              Itens descartados ou inservíveis que saíram do acervo ativo.
-            </p>
-            <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg border border-slate-800">
-              <span className="text-sm text-slate-400">Total de Bens Baixados</span>
-              <span className="text-xl font-extrabold text-purple-400">{baixados}</span>
-            </div>
-            <Link
-              href="/patrimonios?status=BAIXADO"
-              className="mt-4 block text-center text-xs font-semibold text-purple-400 hover:underline"
-            >
-              Consultar Histórico de Baixas →
-            </Link>
-          </div>
+                  {/* Lista de Recursos */}
+                  <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                    {sis.recursos.map((rec, i) => (
+                      <div key={i} className="flex items-center text-[11px] text-slate-300 space-x-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                        <span>{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Botão de Ação */}
+                <div className="pt-6 mt-4 border-t border-slate-800">
+                  {sis.externo ? (
+                    <a
+                      href={sis.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`w-full py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md ${sis.corBotao}`}
+                    >
+                      <span>Acessar {sis.titulo.split(' ')[0]}</span>
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : (
+                    <Link
+                      href={sis.link}
+                      className={`w-full py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md ${sis.corBotao}`}
+                    >
+                      <span>Acessar {sis.titulo.split(' ')[0]}</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      {/* Barra de Indicadores do Patrimônio Escolar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Package className="h-4 w-4 text-blue-400" />
+            Resumo Rápido — Patrimônio Escolar
+          </h3>
+          <Link href="/patrimonios" className="text-xs font-semibold text-blue-400 hover:underline">
+            Gerenciar Acervo Completo →
+          </Link>
+        </div>
+
+        {loading ? (
+          <div className="text-xs text-slate-500 text-center py-4">Carregando indicadores...</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <span className="text-[11px] text-slate-400 block">Total de Bens</span>
+              <span className="text-xl font-extrabold text-white mt-1 block">{totalPatrimonios}</span>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <span className="text-[11px] text-slate-400 block">Em Uso nas Salas</span>
+              <span className="text-xl font-extrabold text-emerald-400 mt-1 block">{emUso}</span>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <span className="text-[11px] text-slate-400 block flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-400" /> Empréstimos Ativos
+              </span>
+              <span className="text-xl font-extrabold text-amber-400 mt-1 block">{emprestimosAtivos}</span>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <span className="text-[11px] text-slate-400 block flex items-center gap-1">
+                <Wrench className="w-3.5 h-3.5 text-rose-400" /> Em Manutenção
+              </span>
+              <span className="text-xl font-extrabold text-rose-400 mt-1 block">{manutencoesAbertas}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function StatusBadge({ status, baixado }: { status: string; baixado: boolean }) {
-  if (baixado || status === 'BAIXADO') {
-    return <span className="bg-purple-950 text-purple-300 border border-purple-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Baixado</span>;
-  }
-  switch (status) {
-    case 'EM_USO':
-      return <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Em Uso</span>;
-    case 'EMPRESTADO':
-      return <span className="bg-amber-950 text-amber-300 border border-amber-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Empréstimo</span>;
-    case 'EM_MANUTENCAO':
-      return <span className="bg-rose-950 text-rose-300 border border-rose-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Manutenção</span>;
-    default:
-      return <span className="bg-slate-800 text-slate-300 text-xs px-2.5 py-0.5 rounded-full">{status}</span>;
-  }
 }

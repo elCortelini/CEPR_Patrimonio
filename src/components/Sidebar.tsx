@@ -18,6 +18,7 @@ import {
   LogOut,
   User as UserIcon,
   Lock,
+  Globe,
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from '@/lib/firebase';
 import { registrarOuAtualizarUsuario, getUsuarioAtual, setUsuarioAtual, UsuarioSistema } from '@/lib/storage';
@@ -29,7 +30,6 @@ export function Sidebar() {
   const [loadingAuth, setLoadingAuth] = useState(true);
 
   useEffect(() => {
-    // Carregar do cache local imediatamente
     const cached = getUsuarioAtual();
     if (cached) setUsuario(cached);
 
@@ -72,7 +72,7 @@ export function Sidebar() {
   }
 
   const baseNavItems = [
-    { name: 'Dashboard', href: '/', icon: Building2 },
+    { name: 'Portal de Sistemas', href: '/', icon: Globe },
     { name: 'Patrimônio (6 dígitos)', href: '/patrimonios', icon: Package },
     { name: 'Locais / Salas', href: '/locais', icon: MapPin },
     { name: 'Empréstimos', href: '/emprestimos', icon: Clock },
@@ -99,7 +99,7 @@ export function Sidebar() {
               CE Pedro Rizzi
             </span>
             <span className="text-[10px] text-slate-400 block -mt-0.5">
-              Controle Patrimonial
+              Portal de Sistemas
             </span>
           </div>
         </div>
@@ -138,7 +138,7 @@ export function Sidebar() {
                 CE Pedro Rizzi
               </h2>
               <span className="text-xs text-slate-400 font-normal block mt-0.5">
-                Controle Patrimonial
+                Portal de Sistemas
               </span>
             </div>
           </div>
@@ -231,7 +231,7 @@ export function Sidebar() {
               Centro Educacional Pedro Rizzi
             </p>
             <p className="text-[10px] text-slate-500 mt-0.5">
-              Gestão Patrimonial com Auditoria
+              Portal Unificado de Gestão
             </p>
           </div>
         </div>
@@ -251,7 +251,7 @@ export function Sidebar() {
                 Centro Educacional Pedro Rizzi
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Por favor, faça login com sua conta do Google para acessar e registrar movimentações de patrimônio.
+                Por favor, faça login com sua conta do Google para acessar o Portal de Sistemas.
               </p>
             </div>
 
