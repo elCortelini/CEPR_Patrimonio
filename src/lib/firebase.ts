@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBn5vAjaDrprWdefLYe1JHHuc3kZUx22tQ",
@@ -17,4 +18,8 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 export const db = getFirestore(app);
 export const rtdb = getDatabase(app);
-export { firebaseConfig };
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+
+export { firebaseConfig, signInWithPopup, signOut, onAuthStateChanged };
+export type { User };

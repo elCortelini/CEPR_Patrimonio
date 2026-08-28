@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Wrench, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
-import { subscribeManutencoes, saveManutencaoStorage, Manutencao } from '@/lib/storage';
+import { subscribeManutencoes, saveManutencaoStorage, getUsuarioAtual, Manutencao } from '@/lib/storage';
 
 export default function ManutencoesPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
@@ -57,6 +57,8 @@ export default function ManutencoesPage() {
       return;
     }
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload = {
       patrimonioCodigo: formData.patrimonioCodigo.padStart(6, '0'),
       solicitante: formData.solicitante.trim(),
@@ -65,7 +67,7 @@ export default function ManutencoesPage() {
       status: 'EM_MANUTENCAO',
     };
 
-    await saveManutencaoStorage(payload);
+    await saveManutencaoStorage(payload, usuarioAtual);
     setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${payload.patrimonioCodigo}!`);
     setIsModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -75,6 +77,8 @@ export default function ManutencoesPage() {
     e.preventDefault();
     if (!selectedManutencao) return;
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload = {
       ...selectedManutencao,
       status: 'CONCLUIDO',
@@ -82,7 +86,7 @@ export default function ManutencoesPage() {
       solucao: concluirData.solucao,
     };
 
-    await saveManutencaoStorage(payload);
+    await saveManutencaoStorage(payload, usuarioAtual);
     setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
     setIsConcluirModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);

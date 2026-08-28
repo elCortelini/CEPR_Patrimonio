@@ -1,5 +1,5 @@
 import { rtdb } from './firebase';
-import { ref, onValue, set, remove } from 'firebase/database';
+import { ref, onValue, set, remove, push } from 'firebase/database';
 
 export interface Local {
   id: string;
@@ -48,14 +48,35 @@ export interface Manutencao {
   solucao?: string | null;
 }
 
+export interface UsuarioSistema {
+  uid: string;
+  email: string;
+  nome: string;
+  fotoUrl?: string | null;
+  role: 'ADMIN' | 'USUARIO';
+  ultimoAcesso: string;
+}
+
+export interface LogMovimentacao {
+  id: string;
+  dataHora: string;
+  usuarioNome: string;
+  usuarioEmail: string;
+  usuarioFoto?: string | null;
+  acao: 'CRIAR' | 'EDITAR' | 'EXCLUIR' | 'BAIXA' | 'EMPRESTIMO' | 'MANUTENCAO' | 'DEVOLUCAO';
+  entidade: 'PATRIMONIO' | 'LOCAL' | 'EMPRESTIMO' | 'MANUTENCAO' | 'USUARIO';
+  detalhes: string;
+}
+
 const STORAGE_KEYS = {
   LOCAIS: 'cepr_locais_v1',
   PATRIMONIOS: 'cepr_patrimonios_v1',
   EMPRESTIMOS: 'cepr_emprestimos_v1',
   MANUTENCOES: 'cepr_manutencoes_v1',
+  USUARIO_ATUAL: 'cepr_user_current_v1',
 };
 
-// Dados Iniciais Escolares
+// Dados Iniciais
 const LOCAIS_INICIAIS: Local[] = [
   { id: 'loc-1', nome: 'Laboratório de Informática', bloco: 'Bloco A', descricao: 'Computadores e tecnologia' },
   { id: 'loc-2', nome: 'Biblioteca Escola Pedro Rizzi', bloco: 'Bloco A', descricao: 'Acervo de livros e mesas de estudo' },
@@ -154,6 +175,148 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
+// ---------------- GESTÃO DE USUÁRIO LOGADO & PERMISSÕES ----------------
+
+export function setUsuarioAtual(user: UsuarioSistema | null) {
+  if (isBrowser()) {
+    if (user) localStorage.setItem(STORAGE_KEYS.USUARIO_ATUAL, JSON.stringify(user));
+    else localStorage.removeItem(STORAGE_KEYS.USUARIO_ATUAL);
+  }
+}
+
+export function getUsuarioAtual(): UsuarioSistema | null {
+  if (!isBrowser()) return null;
+  const data = localStorage.getItem(STORAGE_KEYS.USUARIO_ATUAL);
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeUsuarios(callback: (usuarios: UsuarioSistema[]) => void) {
+  if (!isBrowser()) return () => {};
+
+  try {
+    const usersRef = ref(rtdb, 'usuarios');
+    return onValue(usersRef, (snapshot) => {
+      const val = snapshot.val();
+      if (!val) {
+        callback([]);
+      } else {
+        const list: UsuarioSistema[] = Object.values(val) as UsuarioSistema[];
+        callback(list);
+      }
+    });
+  } catch (e) {
+    console.error('Erro ao ler usuários:', e);
+    return () => {};
+  }
+}
+
+export async function registrarOuAtualizarUsuario(user: {
+  uid: string;
+  email: string;
+  nome: string;
+  fotoUrl?: string | null;
+}): Promise<UsuarioSistema> {
+  const sanitizeKey = (str: string) => str.replace(/[.#$[\]]/g, '_');
+  const userRef = ref(rtdb, `usuarios/${sanitizeKey(user.uid)}`);
+
+  return new Promise((resolve) => {
+    onValue(
+      userRef,
+      async (snapshot) => {
+        const existing = snapshot.val();
+        let role: 'ADMIN' | 'USUARIO' = 'USUARIO';
+
+        if (existing && existing.role) {
+          role = existing.role;
+        } else {
+          // O primeiro usuário a se registrar torna-se ADMIN automaticamente
+          role = 'ADMIN';
+        }
+
+        const usuarioCompleto: UsuarioSistema = {
+          uid: user.uid,
+          email: user.email,
+          nome: user.nome,
+          fotoUrl: user.fotoUrl || null,
+          role,
+          ultimoAcesso: new Date().toISOString(),
+        };
+
+        set(userRef, usuarioCompleto);
+        setUsuarioAtual(usuarioCompleto);
+        resolve(usuarioCompleto);
+      },
+      { onlyOnce: true }
+    );
+  });
+}
+
+export async function alterarRoleUsuario(uid: string, novaRole: 'ADMIN' | 'USUARIO', adminExecutando: UsuarioSistema): Promise<void> {
+  const sanitizeKey = (str: string) => str.replace(/[.#$[\]]/g, '_');
+  const userRef = ref(rtdb, `usuarios/${sanitizeKey(uid)}/role`);
+  await set(userRef, novaRole);
+
+  await registrarLogMovimentacao({
+    usuarioNome: adminExecutando.nome,
+    usuarioEmail: adminExecutando.email,
+    usuarioFoto: adminExecutando.fotoUrl,
+    acao: 'EDITAR',
+    entidade: 'USUARIO',
+    detalhes: `Alterou a permissão do usuário UID ${uid} para ${novaRole}`,
+  });
+}
+
+// ---------------- LOG DE AUDITORIA (MOVIMENTAÇÕES) ----------------
+
+export function subscribeLogs(callback: (logs: LogMovimentacao[]) => void) {
+  if (!isBrowser()) return () => {};
+
+  try {
+    const logsRef = ref(rtdb, 'logs');
+    return onValue(logsRef, (snapshot) => {
+      const val = snapshot.val();
+      if (!val) {
+        callback([]);
+      } else {
+        const rawList = Object.values(val) as LogMovimentacao[];
+        const list = rawList.reverse();
+        callback(list);
+      }
+    });
+  } catch (e) {
+    console.error('Erro ao ler logs:', e);
+    callback([]);
+    return () => {};
+  }
+}
+
+export async function registrarLogMovimentacao(logData: {
+  usuarioNome: string;
+  usuarioEmail: string;
+  usuarioFoto?: string | null;
+  acao: 'CRIAR' | 'EDITAR' | 'EXCLUIR' | 'BAIXA' | 'EMPRESTIMO' | 'MANUTENCAO' | 'DEVOLUCAO';
+  entidade: 'PATRIMONIO' | 'LOCAL' | 'EMPRESTIMO' | 'MANUTENCAO' | 'USUARIO';
+  detalhes: string;
+}) {
+  try {
+    const logsRef = ref(rtdb, 'logs');
+    const newLogRef = push(logsRef);
+    const logCompleto: LogMovimentacao = {
+      id: newLogRef.key || `log-${Date.now()}`,
+      dataHora: new Date().toISOString(),
+      ...logData,
+    };
+    await set(newLogRef, logCompleto);
+  } catch (e) {
+    console.error('Erro ao gravar log de auditoria:', e);
+  }
+}
+
 // ---------------- LISTENERS DE TEMPO REAL (FIREBASE REALTIME DATABASE) ----------------
 
 export function subscribeLocais(callback: (locais: Local[]) => void) {
@@ -166,19 +329,18 @@ export function subscribeLocais(callback: (locais: Local[]) => void) {
       (snapshot) => {
         const val = snapshot.val();
         if (!val) {
-          // Se o banco estiver vazio, grava locais iniciais
           const initialMap: Record<string, Local> = {};
           LOCAIS_INICIAIS.forEach((l) => (initialMap[l.id] = l));
           set(ref(rtdb, 'locais'), initialMap);
           callback(LOCAIS_INICIAIS);
         } else {
-          const list: Local[] = Object.values(val);
+          const list: Local[] = Object.values(val) as Local[];
           localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(list));
           callback(list);
         }
       },
       (error) => {
-        console.error('Erro ao ler locais do Firebase:', error);
+        console.error('Erro ao ler locais:', error);
         callback(getLocaisStorage());
       }
     );
@@ -210,7 +372,7 @@ export function subscribePatrimonios(callback: (patrimonios: Patrimonio[]) => vo
           }));
           callback(result);
         } else {
-          const rawList: Patrimonio[] = Object.values(val);
+          const rawList: Patrimonio[] = Object.values(val) as Patrimonio[];
           const list = rawList.map((p) => ({
             ...p,
             local: locais.find((l) => l.id === p.localId) || { id: p.localId, nome: 'Local Desconhecido' },
@@ -220,7 +382,7 @@ export function subscribePatrimonios(callback: (patrimonios: Patrimonio[]) => vo
         }
       },
       (error) => {
-        console.error('Erro ao ler patrimônios do Firebase:', error);
+        console.error('Erro ao ler patrimônios:', error);
         callback(getPatrimoniosStorage());
       }
     );
@@ -245,7 +407,7 @@ export function subscribeEmprestimos(callback: (emprestimos: Emprestimo[]) => vo
         if (!val) {
           callback([]);
         } else {
-          const rawList: Emprestimo[] = Object.values(val);
+          const rawList: Emprestimo[] = Object.values(val) as Emprestimo[];
           const list = rawList.map((emp) => ({
             ...emp,
             patrimonio: patrimonios.find((p) => p.codigo === emp.patrimonioCodigo),
@@ -255,7 +417,7 @@ export function subscribeEmprestimos(callback: (emprestimos: Emprestimo[]) => vo
         }
       },
       (error) => {
-        console.error('Erro ao ler empréstimos do Firebase:', error);
+        console.error('Erro ao ler empréstimos:', error);
         callback(getEmprestimosStorage());
       }
     );
@@ -280,7 +442,7 @@ export function subscribeManutencoes(callback: (manutencoes: Manutencao[]) => vo
         if (!val) {
           callback([]);
         } else {
-          const rawList: Manutencao[] = Object.values(val);
+          const rawList: Manutencao[] = Object.values(val) as Manutencao[];
           const list = rawList.map((m) => ({
             ...m,
             patrimonio: patrimonios.find((p) => p.codigo === m.patrimonioCodigo),
@@ -290,7 +452,7 @@ export function subscribeManutencoes(callback: (manutencoes: Manutencao[]) => vo
         }
       },
       (error) => {
-        console.error('Erro ao ler manutenções do Firebase:', error);
+        console.error('Erro ao ler manutenções:', error);
         callback(getManutencoesStorage());
       }
     );
@@ -301,7 +463,7 @@ export function subscribeManutencoes(callback: (manutencoes: Manutencao[]) => vo
   }
 }
 
-// ---------------- OPERAÇÕES DE ESCRITA E LEITURA ----------------
+// ---------------- OPERAÇÕES DE ESCRITA COM REGISTRO DE AUDITORIA ----------------
 
 export function getLocaisStorage(): Local[] {
   if (!isBrowser()) return LOCAIS_INICIAIS;
@@ -314,7 +476,11 @@ export function getLocaisStorage(): Local[] {
   }
 }
 
-export async function saveLocalStorage(local: Omit<Local, 'id'> & { id?: string }): Promise<Local> {
+export async function saveLocalStorage(
+  local: Omit<Local, 'id'> & { id?: string },
+  usuarioLogado?: UsuarioSistema | null
+): Promise<Local> {
+  const isEdit = Boolean(local.id);
   const id = local.id || `loc-${Date.now()}`;
   const novoLocal: Local = { ...local, id };
 
@@ -327,21 +493,45 @@ export async function saveLocalStorage(local: Omit<Local, 'id'> & { id?: string 
 
   try {
     await set(ref(rtdb, `locais/${id}`), novoLocal);
+
+    if (usuarioLogado) {
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: isEdit ? 'EDITAR' : 'CRIAR',
+        entidade: 'LOCAL',
+        detalhes: `${isEdit ? 'Atualizou' : 'Cadastrou'} a sala/local "${novoLocal.nome}" (${novoLocal.bloco || 'Sem Bloco'})`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao salvar local no Realtime Database:', e);
+    console.error('Erro ao salvar local:', e);
   }
 
   return novoLocal;
 }
 
-export async function deleteLocalStorage(id: string): Promise<void> {
-  const locais = getLocaisStorage().filter((l) => l.id !== id);
-  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(locais));
+export async function deleteLocalStorage(id: string, usuarioLogado?: UsuarioSistema | null): Promise<void> {
+  const locais = getLocaisStorage();
+  const localAlvo = locais.find((l) => l.id === id);
+  const novocLocais = locais.filter((l) => l.id !== id);
+  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(novocLocais));
 
   try {
     await remove(ref(rtdb, `locais/${id}`));
+
+    if (usuarioLogado && localAlvo) {
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: 'EXCLUIR',
+        entidade: 'LOCAL',
+        detalhes: `Excluiu a sala/local "${localAlvo.nome}"`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao deletar local no Realtime Database:', e);
+    console.error('Erro ao deletar local:', e);
   }
 }
 
@@ -367,14 +557,18 @@ export function getPatrimoniosStorage(): Patrimonio[] {
   }));
 }
 
-export async function savePatrimonioStorage(patrimonio: Patrimonio): Promise<Patrimonio> {
+export async function savePatrimonioStorage(
+  patrimonio: Patrimonio,
+  usuarioLogado?: UsuarioSistema | null
+): Promise<Patrimonio> {
   const cleanPatrimonio = { ...patrimonio };
   delete cleanPatrimonio.local;
 
   const patrimonios = getPatrimoniosStorage().map(({ local, ...p }) => p);
   const index = patrimonios.findIndex((p) => p.codigo === patrimonio.codigo);
+  const isEdit = index >= 0;
 
-  if (index >= 0) {
+  if (isEdit) {
     patrimonios[index] = cleanPatrimonio;
   } else {
     patrimonios.push(cleanPatrimonio);
@@ -384,23 +578,54 @@ export async function savePatrimonioStorage(patrimonio: Patrimonio): Promise<Pat
 
   try {
     await set(ref(rtdb, `patrimonios/${patrimonio.codigo}`), cleanPatrimonio);
+
+    if (usuarioLogado) {
+      let acaoLog: 'CRIAR' | 'EDITAR' | 'BAIXA' = isEdit ? 'EDITAR' : 'CRIAR';
+      let acaoTexto = isEdit ? 'Atualizou' : 'Cadastrou';
+
+      if (patrimonio.baixado) {
+        acaoLog = 'BAIXA';
+        acaoTexto = 'Efetuou a baixa do';
+      }
+
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: acaoLog,
+        entidade: 'PATRIMONIO',
+        detalhes: `${acaoTexto} patrimônio #${patrimonio.codigo} (${patrimonio.descricao})`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao salvar patrimônio no Realtime Database:', e);
+    console.error('Erro ao salvar patrimônio:', e);
   }
 
   return patrimonio;
 }
 
-export async function deletePatrimonioStorage(codigo: string): Promise<void> {
-  const patrimonios = getPatrimoniosStorage()
-    .filter((p) => p.codigo !== codigo)
-    .map(({ local, ...p }) => p);
-  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
+export async function deletePatrimonioStorage(codigo: string, usuarioLogado?: UsuarioSistema | null): Promise<void> {
+  const patrimonios = getPatrimoniosStorage();
+  const alvo = patrimonios.find((p) => p.codigo === codigo);
+  const listaLimpa = patrimonios.filter((p) => p.codigo !== codigo).map(({ local, ...p }) => p);
+
+  if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(listaLimpa));
 
   try {
     await remove(ref(rtdb, `patrimonios/${codigo}`));
+
+    if (usuarioLogado && alvo) {
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: 'EXCLUIR',
+        entidade: 'PATRIMONIO',
+        detalhes: `Excluiu o patrimônio #${codigo} (${alvo.descricao})`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao deletar patrimônio no Realtime Database:', e);
+    console.error('Erro ao deletar patrimônio:', e);
   }
 }
 
@@ -421,7 +646,10 @@ export function getEmprestimosStorage(): Emprestimo[] {
   }
 }
 
-export async function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { id?: string }): Promise<Emprestimo> {
+export async function saveEmprestimoStorage(
+  empData: Omit<Emprestimo, 'id'> & { id?: string },
+  usuarioLogado?: UsuarioSistema | null
+): Promise<Emprestimo> {
   const id = empData.id || `emp-${Date.now()}`;
   const cleanEmp = { ...empData, id };
   delete cleanEmp.patrimonio;
@@ -442,8 +670,20 @@ export async function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { 
 
   try {
     await set(ref(rtdb, `emprestimos/${id}`), cleanEmp);
+
+    if (usuarioLogado) {
+      const isDevolucao = cleanEmp.status === 'DEVOLVIDO';
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: isDevolucao ? 'DEVOLUCAO' : 'EMPRESTIMO',
+        entidade: 'EMPRESTIMO',
+        detalhes: `${isDevolucao ? 'Registrou devolução do' : 'Registrou empréstimo do'} patrimônio #${cleanEmp.patrimonioCodigo} para ${cleanEmp.solicitante}`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao salvar empréstimo no Realtime Database:', e);
+    console.error('Erro ao salvar empréstimo:', e);
   }
 
   return cleanEmp;
@@ -466,7 +706,10 @@ export function getManutencoesStorage(): Manutencao[] {
   }
 }
 
-export async function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & { id?: string }): Promise<Manutencao> {
+export async function saveManutencaoStorage(
+  matsData: Omit<Manutencao, 'id'> & { id?: string },
+  usuarioLogado?: UsuarioSistema | null
+): Promise<Manutencao> {
   const id = matsData.id || `man-${Date.now()}`;
   const cleanMan = { ...matsData, id };
   delete cleanMan.patrimonio;
@@ -487,8 +730,20 @@ export async function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & {
 
   try {
     await set(ref(rtdb, `manutencoes/${id}`), cleanMan);
+
+    if (usuarioLogado) {
+      const isConcluido = cleanMan.status === 'CONCLUIDO';
+      await registrarLogMovimentacao({
+        usuarioNome: usuarioLogado.nome,
+        usuarioEmail: usuarioLogado.email,
+        usuarioFoto: usuarioLogado.fotoUrl,
+        acao: 'MANUTENCAO',
+        entidade: 'MANUTENCAO',
+        detalhes: `${isConcluido ? 'Concluiu a manutenção do' : 'Abriu chamado de manutenção para o'} patrimônio #${cleanMan.patrimonioCodigo}`,
+      });
+    }
   } catch (e) {
-    console.error('Erro ao salvar manutenção no Realtime Database:', e);
+    console.error('Erro ao salvar manutenção:', e);
   }
 
   return cleanMan;

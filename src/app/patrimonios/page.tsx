@@ -25,6 +25,7 @@ import {
   deletePatrimonioStorage,
   subscribePatrimonios,
   subscribeLocais,
+  getUsuarioAtual,
   Patrimonio,
   Local,
 } from '@/lib/storage';
@@ -106,7 +107,6 @@ function PatrimoniosContent() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Assinar mudanças no banco de dados (Tempo Real / Storage)
   useEffect(() => {
     const unsubLocais = subscribeLocais((locs) => {
       setLocais(locs);
@@ -130,7 +130,6 @@ function PatrimoniosContent() {
     };
   }, []);
 
-  // Aplicar Filtros
   useEffect(() => {
     let result = [...allPatrimonios];
 
@@ -244,6 +243,8 @@ function PatrimoniosContent() {
       return;
     }
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload: Patrimonio = {
       codigo: codigoFormatado,
       descricao: formData.descricao.trim(),
@@ -256,7 +257,7 @@ function PatrimoniosContent() {
       fotoUrl: formData.fotoUrl,
     };
 
-    await savePatrimonioStorage(payload);
+    await savePatrimonioStorage(payload, usuarioAtual);
     setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
     setIsModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -266,6 +267,8 @@ function PatrimoniosContent() {
     e.preventDefault();
     if (!patrimonioSelecionado) return;
 
+    const usuarioAtual = getUsuarioAtual();
+
     const patrimonioBaixado: Patrimonio = {
       ...patrimonioSelecionado,
       baixado: true,
@@ -274,7 +277,7 @@ function PatrimoniosContent() {
       motivoBaixa: baixaFormData.motivoBaixa,
     };
 
-    await savePatrimonioStorage(patrimonioBaixado);
+    await savePatrimonioStorage(patrimonioBaixado, usuarioAtual);
     setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
     setIsBaixaModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -283,7 +286,8 @@ function PatrimoniosContent() {
   async function handleExcluir(codigo: string) {
     if (!confirm(`Tem certeza que deseja excluir permanentemente o patrimônio ${codigo}?`)) return;
 
-    await deletePatrimonioStorage(codigo);
+    const usuarioAtual = getUsuarioAtual();
+    await deletePatrimonioStorage(codigo, usuarioAtual);
     setSuccessMsg(`Patrimônio ${codigo} excluído.`);
     setTimeout(() => setSuccessMsg(''), 4000);
   }

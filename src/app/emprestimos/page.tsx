@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Clock, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
-import { subscribeEmprestimos, saveEmprestimoStorage, Emprestimo } from '@/lib/storage';
+import { subscribeEmprestimos, saveEmprestimoStorage, getUsuarioAtual, Emprestimo } from '@/lib/storage';
 
 export default function EmprestimosPage() {
   const [emprestimos, setEmprestimos] = useState<Emprestimo[]>([]);
@@ -61,6 +61,8 @@ export default function EmprestimosPage() {
       return;
     }
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload = {
       patrimonioCodigo: formData.patrimonioCodigo.padStart(6, '0'),
       solicitante: formData.solicitante.trim(),
@@ -71,7 +73,7 @@ export default function EmprestimosPage() {
       observacao: formData.observacao ? formData.observacao.trim() : null,
     };
 
-    await saveEmprestimoStorage(payload);
+    await saveEmprestimoStorage(payload, usuarioAtual);
     setSuccessMsg(`Empréstimo do patrimônio #${payload.patrimonioCodigo} registrado com sucesso!`);
     setIsModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -81,6 +83,8 @@ export default function EmprestimosPage() {
     e.preventDefault();
     if (!selectedEmprestimo) return;
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload = {
       ...selectedEmprestimo,
       status: 'DEVOLVIDO',
@@ -88,7 +92,7 @@ export default function EmprestimosPage() {
       observacao: devolucaoObs ? `${selectedEmprestimo.observacao || ''} | Devolução: ${devolucaoObs}` : selectedEmprestimo.observacao,
     };
 
-    await saveEmprestimoStorage(payload);
+    await saveEmprestimoStorage(payload, usuarioAtual);
     setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
     setIsDevolucaoModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);

@@ -7,6 +7,7 @@ import {
   deleteLocalStorage,
   subscribeLocais,
   subscribePatrimonios,
+  getUsuarioAtual,
   Local,
   Patrimonio,
 } from '@/lib/storage';
@@ -19,7 +20,6 @@ interface LocalItem extends Local {
 
 export default function LocaisPage() {
   const [locais, setLocais] = useState<LocalItem[]>([]);
-  const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,6 +96,8 @@ export default function LocaisPage() {
       return;
     }
 
+    const usuarioAtual = getUsuarioAtual();
+
     const payload = {
       id: selectedId || undefined,
       nome: formData.nome.trim(),
@@ -103,7 +105,7 @@ export default function LocaisPage() {
       descricao: formData.descricao.trim(),
     };
 
-    await saveLocalStorage(payload);
+    await saveLocalStorage(payload, usuarioAtual);
     setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
     setIsModalOpen(false);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -112,7 +114,8 @@ export default function LocaisPage() {
   async function handleExcluir(id: string, nome: string) {
     if (!confirm(`Tem certeza que deseja excluir a sala "${nome}"?`)) return;
 
-    await deleteLocalStorage(id);
+    const usuarioAtual = getUsuarioAtual();
+    await deleteLocalStorage(id, usuarioAtual);
     setSuccessMsg(`Local "${nome}" excluído.`);
     setTimeout(() => setSuccessMsg(''), 4000);
   }
