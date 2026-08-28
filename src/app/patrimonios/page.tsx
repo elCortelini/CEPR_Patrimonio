@@ -21,10 +21,10 @@ import {
 import { gerarPDFPatrimonio } from '@/lib/pdfGenerator';
 import { exportarExcelPatrimonio } from '@/lib/excelGenerator';
 import {
-  getPatrimoniosStorage,
-  getLocaisStorage,
   savePatrimonioStorage,
   deletePatrimonioStorage,
+  subscribePatrimonios,
+  subscribeLocais,
   Patrimonio,
   Local,
 } from '@/lib/storage';
@@ -68,6 +68,7 @@ function compressImage(file: File, maxWidth = 800, maxHeight = 800, quality = 0.
 function PatrimoniosContent() {
   const searchParams = useSearchParams();
 
+  const [allPatrimonios, setAllPatrimonios] = useState<Patrimonio[]>([]);
   const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
   const [locais, setLocais] = useState<Local[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,60 +106,33 @@ function PatrimoniosContent() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Assinar mudanças no banco de dados (Tempo Real / Storage)
   useEffect(() => {
-    fetchLocais();
+    const unsubLocais = subscribeLocais((locs) => {
+      setLocais(locs);
+      if (locs.length > 0 && !formData.localId) {
+        setFormData((prev) => ({ ...prev, localId: locs[0].id }));
+      }
+    });
+
+    const unsubPatrimonios = subscribePatrimonios((pats) => {
+      setAllPatrimonios(pats);
+      setLoading(false);
+    });
+
     if (searchParams.get('novo') === 'true') {
       abrirModalNovo();
     }
-  }, [searchParams]);
 
+    return () => {
+      unsubLocais();
+      unsubPatrimonios();
+    };
+  }, []);
+
+  // Aplicar Filtros
   useEffect(() => {
-    fetchPatrimonios();
-  }, [search, filterLocal, filterStatus, filterBaixado]);
-
-  async function fetchLocais() {
-    try {
-      const res = await fetch('/api/locais');
-      if (res.ok) {
-        const json = await res.json();
-        setLocais(json);
-        if (json.length > 0 && !formData.localId) {
-          setFormData((prev) => ({ ...prev, localId: json[0].id }));
-        }
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-    const locs = getLocaisStorage();
-    setLocais(locs);
-    if (locs.length > 0 && !formData.localId) {
-      setFormData((prev) => ({ ...prev, localId: locs[0].id }));
-    }
-  }
-
-  async function fetchPatrimonios() {
-    setLoading(true);
-    let list: Patrimonio[] = [];
-    try {
-      const queryParams = new URLSearchParams();
-      if (search) queryParams.set('search', search);
-      if (filterLocal !== 'TODOS') queryParams.set('localId', filterLocal);
-      if (filterStatus !== 'TODOS') queryParams.set('status', filterStatus);
-      if (filterBaixado !== 'TODOS') queryParams.set('baixado', filterBaixado);
-
-      const res = await fetch(`/api/patrimonios?${queryParams.toString()}`);
-      if (res.ok) {
-        list = await res.json();
-        setPatrimonios(list);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    let result = getPatrimoniosStorage();
+    let result = [...allPatrimonios];
 
     if (search) {
       const s = search.toLowerCase();
@@ -186,8 +160,7 @@ function PatrimoniosContent() {
     }
 
     setPatrimonios(result);
-    setLoading(false);
-  }
+  }, [allPatrimonios, search, filterLocal, filterStatus, filterBaixado]);
 
   function abrirModalNovo() {
     setIsEditMode(false);
@@ -283,31 +256,9 @@ function PatrimoniosContent() {
       fotoUrl: formData.fotoUrl,
     };
 
-    try {
-      const url = isEditMode ? `/api/patrimonios/${codigoFormatado}` : '/api/patrimonios';
-      const method = isEditMode ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
-        setIsModalOpen(false);
-        fetchPatrimonios();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    savePatrimonioStorage(payload);
+    await savePatrimonioStorage(payload);
     setSuccessMsg(isEditMode ? 'Patrimônio atualizado com sucesso!' : 'Patrimônio cadastrado com sucesso!');
     setIsModalOpen(false);
-    fetchPatrimonios();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
@@ -323,52 +274,17 @@ function PatrimoniosContent() {
       motivoBaixa: baixaFormData.motivoBaixa,
     };
 
-    try {
-      const res = await fetch(`/api/patrimonios/${patrimonioSelecionado.codigo}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patrimonioBaixado),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
-        setIsBaixaModalOpen(false);
-        fetchPatrimonios();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    savePatrimonioStorage(patrimonioBaixado);
+    await savePatrimonioStorage(patrimonioBaixado);
     setSuccessMsg(`Baixa efetuada com sucesso no patrimônio ${patrimonioSelecionado.codigo}.`);
     setIsBaixaModalOpen(false);
-    fetchPatrimonios();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleExcluir(codigo: string) {
     if (!confirm(`Tem certeza que deseja excluir permanentemente o patrimônio ${codigo}?`)) return;
 
-    try {
-      const res = await fetch(`/api/patrimonios/${codigo}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Patrimônio ${codigo} excluído.`);
-        fetchPatrimonios();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    deletePatrimonioStorage(codigo);
+    await deletePatrimonioStorage(codigo);
     setSuccessMsg(`Patrimônio ${codigo} excluído.`);
-    fetchPatrimonios();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 

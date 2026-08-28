@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Clock, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
-import { getEmprestimosStorage, saveEmprestimoStorage, Emprestimo } from '@/lib/storage';
+import { subscribeEmprestimos, saveEmprestimoStorage, Emprestimo } from '@/lib/storage';
 
 export default function EmprestimosPage() {
   const [emprestimos, setEmprestimos] = useState<Emprestimo[]>([]);
@@ -25,27 +25,13 @@ export default function EmprestimosPage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    fetchEmprestimos();
+    const unsub = subscribeEmprestimos((list) => {
+      setEmprestimos(list);
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, []);
-
-  async function fetchEmprestimos() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/emprestimos');
-      if (res.ok) {
-        const json = await res.json();
-        setEmprestimos(json);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    const list = getEmprestimosStorage();
-    setEmprestimos(list);
-    setLoading(false);
-  }
 
   function abrirModalNovo() {
     setFormData({
@@ -85,28 +71,9 @@ export default function EmprestimosPage() {
       observacao: formData.observacao ? formData.observacao.trim() : null,
     };
 
-    try {
-      const res = await fetch('/api/emprestimos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Empréstimo do patrimônio #${payload.patrimonioCodigo} registrado com sucesso!`);
-        setIsModalOpen(false);
-        fetchEmprestimos();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    saveEmprestimoStorage(payload);
+    await saveEmprestimoStorage(payload);
     setSuccessMsg(`Empréstimo do patrimônio #${payload.patrimonioCodigo} registrado com sucesso!`);
     setIsModalOpen(false);
-    fetchEmprestimos();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
@@ -121,28 +88,9 @@ export default function EmprestimosPage() {
       observacao: devolucaoObs ? `${selectedEmprestimo.observacao || ''} | Devolução: ${devolucaoObs}` : selectedEmprestimo.observacao,
     };
 
-    try {
-      const res = await fetch('/api/emprestimos', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selectedEmprestimo.id, observacaoDevolucao: devolucaoObs }),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
-        setIsDevolucaoModalOpen(false);
-        fetchEmprestimos();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    saveEmprestimoStorage(payload);
+    await saveEmprestimoStorage(payload);
     setSuccessMsg(`Devolução do patrimônio #${selectedEmprestimo.patrimonioCodigo} concluída.`);
     setIsDevolucaoModalOpen(false);
-    fetchEmprestimos();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 

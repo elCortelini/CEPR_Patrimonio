@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Wrench, Plus, CheckCircle, X, CheckCircle2 } from 'lucide-react';
-import { getManutencoesStorage, saveManutencaoStorage, Manutencao } from '@/lib/storage';
+import { subscribeManutencoes, saveManutencaoStorage, Manutencao } from '@/lib/storage';
 
 export default function ManutencoesPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
@@ -27,27 +27,13 @@ export default function ManutencoesPage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    fetchManutencoes();
+    const unsub = subscribeManutencoes((list) => {
+      setManutencoes(list);
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, []);
-
-  async function fetchManutencoes() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/manutencoes');
-      if (res.ok) {
-        const json = await res.json();
-        setManutencoes(json);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    const list = getManutencoesStorage();
-    setManutencoes(list);
-    setLoading(false);
-  }
 
   function abrirModalNovo() {
     setFormData({ patrimonioCodigo: '', solicitante: '', descricaoProblema: '' });
@@ -79,28 +65,9 @@ export default function ManutencoesPage() {
       status: 'EM_MANUTENCAO',
     };
 
-    try {
-      const res = await fetch('/api/manutencoes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${payload.patrimonioCodigo}!`);
-        setIsModalOpen(false);
-        fetchManutencoes();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    saveManutencaoStorage(payload);
+    await saveManutencaoStorage(payload);
     setSuccessMsg(`Chamado de manutenção aberto para o patrimônio #${payload.patrimonioCodigo}!`);
     setIsModalOpen(false);
-    fetchManutencoes();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
@@ -115,28 +82,9 @@ export default function ManutencoesPage() {
       solucao: concluirData.solucao,
     };
 
-    try {
-      const res = await fetch('/api/manutencoes', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
-        setIsConcluirModalOpen(false);
-        fetchManutencoes();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    saveManutencaoStorage(payload);
+    await saveManutencaoStorage(payload);
     setSuccessMsg(`Manutenção do patrimônio #${selectedManutencao.patrimonioCodigo} concluída.`);
     setIsConcluirModalOpen(false);
-    fetchManutencoes();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 

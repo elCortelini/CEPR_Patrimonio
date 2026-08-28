@@ -1,4 +1,12 @@
-// Módulo de Armazenamento Persistente para Aplicação Web (GitHub Pages / Client-Side)
+import { db } from './firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+} from 'firebase/firestore';
 
 export interface Local {
   id: string;
@@ -153,7 +161,118 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-// ---------------- GESTÃO DE LOCAIS ----------------
+function hasFirebaseConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+}
+
+// ---------------- LISTENERS DE TEMPO REAL (FIREBASE) ----------------
+
+export function subscribeLocais(callback: (locais: Local[]) => void) {
+  if (hasFirebaseConfigured()) {
+    try {
+      return onSnapshot(collection(db, 'locais'), (snapshot) => {
+        if (snapshot.empty) {
+          // Se o banco online estiver vazio, popula com locais iniciais
+          LOCAIS_INICIAIS.forEach((loc) => setDoc(doc(db, 'locais', loc.id), loc));
+          callback(LOCAIS_INICIAIS);
+        } else {
+          const list: Local[] = snapshot.docs.map((docSnap) => docSnap.data() as Local);
+          if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(list));
+          callback(list);
+        }
+      });
+    } catch (e) {
+      console.error('Erro no listener do Firebase:', e);
+    }
+  }
+
+  callback(getLocaisStorage());
+  return () => {};
+}
+
+export function subscribePatrimonios(callback: (patrimonios: Patrimonio[]) => void) {
+  if (hasFirebaseConfigured()) {
+    try {
+      return onSnapshot(collection(db, 'patrimonios'), (snapshot) => {
+        const locais = getLocaisStorage();
+        if (snapshot.empty) {
+          PATRIMONIOS_INICIAIS.forEach((pat) => setDoc(doc(db, 'patrimonios', pat.codigo), pat));
+          const result = PATRIMONIOS_INICIAIS.map((p) => ({
+            ...p,
+            local: locais.find((l) => l.id === p.localId) || { id: p.localId, nome: 'Local Desconhecido' },
+          }));
+          callback(result);
+        } else {
+          const list: Patrimonio[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data() as Patrimonio;
+            return {
+              ...data,
+              local: locais.find((l) => l.id === data.localId) || { id: data.localId, nome: 'Local Desconhecido' },
+            };
+          });
+          if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(snapshot.docs.map(d => d.data())));
+          callback(list);
+        }
+      });
+    } catch (e) {
+      console.error('Erro no listener do Firebase:', e);
+    }
+  }
+
+  callback(getPatrimoniosStorage());
+  return () => {};
+}
+
+export function subscribeEmprestimos(callback: (emprestimos: Emprestimo[]) => void) {
+  if (hasFirebaseConfigured()) {
+    try {
+      return onSnapshot(collection(db, 'emprestimos'), (snapshot) => {
+        const patrimonios = getPatrimoniosStorage();
+        const list: Emprestimo[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Emprestimo;
+          return {
+            ...data,
+            patrimonio: patrimonios.find((p) => p.codigo === data.patrimonioCodigo),
+          };
+        });
+        if (isBrowser()) localStorage.setItem(STORAGE_KEYS.EMPRESTIMOS, JSON.stringify(snapshot.docs.map(d => d.data())));
+        callback(list);
+      });
+    } catch (e) {
+      console.error('Erro no listener do Firebase:', e);
+    }
+  }
+
+  callback(getEmprestimosStorage());
+  return () => {};
+}
+
+export function subscribeManutencoes(callback: (manutencoes: Manutencao[]) => void) {
+  if (hasFirebaseConfigured()) {
+    try {
+      return onSnapshot(collection(db, 'manutencoes'), (snapshot) => {
+        const patrimonios = getPatrimoniosStorage();
+        const list: Manutencao[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Manutencao;
+          return {
+            ...data,
+            patrimonio: patrimonios.find((p) => p.codigo === data.patrimonioCodigo),
+          };
+        });
+        if (isBrowser()) localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(snapshot.docs.map(d => d.data())));
+        callback(list);
+      });
+    } catch (e) {
+      console.error('Erro no listener do Firebase:', e);
+    }
+  }
+
+  callback(getManutencoesStorage());
+  return () => {};
+}
+
+// ---------------- OPERAÇÕES LOCAIS E FIREBASE ----------------
+
 export function getLocaisStorage(): Local[] {
   if (!isBrowser()) return LOCAIS_INICIAIS;
   const data = localStorage.getItem(STORAGE_KEYS.LOCAIS);
@@ -168,32 +287,41 @@ export function getLocaisStorage(): Local[] {
   }
 }
 
-export function saveLocalStorage(local: Omit<Local, 'id'> & { id?: string }): Local {
-  const locais = getLocaisStorage();
-  let novoLocal: Local;
+export async function saveLocalStorage(local: Omit<Local, 'id'> & { id?: string }): Promise<Local> {
+  const id = local.id || `loc-${Date.now()}`;
+  const novoLocal: Local = { ...local, id };
 
-  if (local.id) {
-    locais.map((l, index) => {
-      if (l.id === local.id) {
-        locais[index] = { ...l, ...local };
-      }
-    });
-    novoLocal = local as Local;
-  } else {
-    novoLocal = { ...local, id: `loc-${Date.now()}` };
-    locais.push(novoLocal);
-  }
+  const locais = getLocaisStorage();
+  const idx = locais.findIndex((l) => l.id === id);
+  if (idx >= 0) locais[idx] = novoLocal;
+  else locais.push(novoLocal);
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(locais));
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await setDoc(doc(db, 'locais', id), novoLocal);
+    } catch (e) {
+      console.error('Erro ao salvar local no Firebase:', e);
+    }
+  }
+
   return novoLocal;
 }
 
-export function deleteLocalStorage(id: string): void {
+export async function deleteLocalStorage(id: string): Promise<void> {
   const locais = getLocaisStorage().filter((l) => l.id !== id);
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.LOCAIS, JSON.stringify(locais));
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await deleteDoc(doc(db, 'locais', id));
+    } catch (e) {
+      console.error('Erro ao deletar local no Firebase:', e);
+    }
+  }
 }
 
-// ---------------- GESTÃO DE PATRIMÔNIOS ----------------
 export function getPatrimoniosStorage(): Patrimonio[] {
   if (!isBrowser()) return PATRIMONIOS_INICIAIS;
   const data = localStorage.getItem(STORAGE_KEYS.PATRIMONIOS);
@@ -217,12 +345,12 @@ export function getPatrimoniosStorage(): Patrimonio[] {
   }));
 }
 
-export function savePatrimonioStorage(patrimonio: Patrimonio): Patrimonio {
-  const patrimonios = getPatrimoniosStorage().map(({ local, ...p }) => p);
-  const index = patrimonios.findIndex((p) => p.codigo === patrimonio.codigo);
-
+export async function savePatrimonioStorage(patrimonio: Patrimonio): Promise<Patrimonio> {
   const cleanPatrimonio = { ...patrimonio };
   delete cleanPatrimonio.local;
+
+  const patrimonios = getPatrimoniosStorage().map(({ local, ...p }) => p);
+  const index = patrimonios.findIndex((p) => p.codigo === patrimonio.codigo);
 
   if (index >= 0) {
     patrimonios[index] = cleanPatrimonio;
@@ -231,17 +359,33 @@ export function savePatrimonioStorage(patrimonio: Patrimonio): Patrimonio {
   }
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await setDoc(doc(db, 'patrimonios', patrimonio.codigo), cleanPatrimonio);
+    } catch (e) {
+      console.error('Erro ao salvar patrimônio no Firebase:', e);
+    }
+  }
+
   return patrimonio;
 }
 
-export function deletePatrimonioStorage(codigo: string): void {
+export async function deletePatrimonioStorage(codigo: string): Promise<void> {
   const patrimonios = getPatrimoniosStorage()
     .filter((p) => p.codigo !== codigo)
     .map(({ local, ...p }) => p);
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.PATRIMONIOS, JSON.stringify(patrimonios));
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await deleteDoc(doc(db, 'patrimonios', codigo));
+    } catch (e) {
+      console.error('Erro ao deletar patrimônio no Firebase:', e);
+    }
+  }
 }
 
-// ---------------- GESTÃO DE EMPRÉSTIMOS ----------------
 export function getEmprestimosStorage(): Emprestimo[] {
   if (!isBrowser()) return [];
   const data = localStorage.getItem(STORAGE_KEYS.EMPRESTIMOS);
@@ -259,31 +403,37 @@ export function getEmprestimosStorage(): Emprestimo[] {
   }
 }
 
-export function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { id?: string }): Emprestimo {
+export async function saveEmprestimoStorage(empData: Omit<Emprestimo, 'id'> & { id?: string }): Promise<Emprestimo> {
+  const id = empData.id || `emp-${Date.now()}`;
+  const cleanEmp = { ...empData, id };
+  delete cleanEmp.patrimonio;
+
   const emprestimos = getEmprestimosStorage().map(({ patrimonio, ...e }) => e);
-  let novoEmprestimo: Emprestimo;
+  const idx = emprestimos.findIndex((e) => e.id === id);
+  if (idx >= 0) emprestimos[idx] = cleanEmp;
+  else emprestimos.push(cleanEmp);
 
-  if (empData.id) {
-    const idx = emprestimos.findIndex((e) => e.id === empData.id);
-    if (idx >= 0) emprestimos[idx] = empData as Emprestimo;
-    novoEmprestimo = empData as Emprestimo;
-  } else {
-    novoEmprestimo = { ...empData, id: `emp-${Date.now()}` };
-    emprestimos.push(novoEmprestimo);
-  }
-
+  // Atualizar status do patrimônio correspondente
   const patrimonios = getPatrimoniosStorage();
-  const pat = patrimonios.find((p) => p.codigo === novoEmprestimo.patrimonioCodigo);
+  const pat = patrimonios.find((p) => p.codigo === cleanEmp.patrimonioCodigo);
   if (pat) {
-    pat.status = novoEmprestimo.status === 'ATIVO' ? 'EMPRESTADO' : 'EM_USO';
-    savePatrimonioStorage(pat);
+    pat.status = cleanEmp.status === 'ATIVO' ? 'EMPRESTADO' : 'EM_USO';
+    await savePatrimonioStorage(pat);
   }
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.EMPRESTIMOS, JSON.stringify(emprestimos));
-  return novoEmprestimo;
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await setDoc(doc(db, 'emprestimos', id), cleanEmp);
+    } catch (e) {
+      console.error('Erro ao salvar empréstimo no Firebase:', e);
+    }
+  }
+
+  return cleanEmp;
 }
 
-// ---------------- GESTÃO DE MANUTENÇÕES ----------------
 export function getManutencoesStorage(): Manutencao[] {
   if (!isBrowser()) return [];
   const data = localStorage.getItem(STORAGE_KEYS.MANUTENCOES);
@@ -301,26 +451,32 @@ export function getManutencoesStorage(): Manutencao[] {
   }
 }
 
-export function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & { id?: string }): Manutencao {
-  const manutencoes = getManutencoesStorage().map(({ patrimonio, ...m }) => m);
-  let novaManutencao: Manutencao;
+export async function saveManutencaoStorage(matsData: Omit<Manutencao, 'id'> & { id?: string }): Promise<Manutencao> {
+  const id = matsData.id || `man-${Date.now()}`;
+  const cleanMan = { ...matsData, id };
+  delete cleanMan.patrimonio;
 
-  if (matsData.id) {
-    const idx = manutencoes.findIndex((m) => m.id === matsData.id);
-    if (idx >= 0) manutencoes[idx] = matsData as Manutencao;
-    novaManutencao = matsData as Manutencao;
-  } else {
-    novaManutencao = { ...matsData, id: `man-${Date.now()}` };
-    manutencoes.push(novaManutencao);
-  }
+  const manutencoes = getManutencoesStorage().map(({ patrimonio, ...m }) => m);
+  const idx = manutencoes.findIndex((m) => m.id === id);
+  if (idx >= 0) manutencoes[idx] = cleanMan;
+  else manutencoes.push(cleanMan);
 
   const patrimonios = getPatrimoniosStorage();
-  const pat = patrimonios.find((p) => p.codigo === novaManutencao.patrimonioCodigo);
+  const pat = patrimonios.find((p) => p.codigo === cleanMan.patrimonioCodigo);
   if (pat) {
-    pat.status = novaManutencao.status === 'CONCLUIDO' ? 'EM_USO' : 'EM_MANUTENCAO';
-    savePatrimonioStorage(pat);
+    pat.status = cleanMan.status === 'CONCLUIDO' ? 'EM_USO' : 'EM_MANUTENCAO';
+    await savePatrimonioStorage(pat);
   }
 
   if (isBrowser()) localStorage.setItem(STORAGE_KEYS.MANUTENCOES, JSON.stringify(manutencoes));
-  return novaManutencao;
+
+  if (hasFirebaseConfigured()) {
+    try {
+      await setDoc(doc(db, 'manutencoes', id), cleanMan);
+    } catch (e) {
+      console.error('Erro ao salvar manutenção no Firebase:', e);
+    }
+  }
+
+  return cleanMan;
 }

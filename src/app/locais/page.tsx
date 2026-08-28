@@ -2,17 +2,24 @@
 
 import React, { useEffect, useState } from 'react';
 import { MapPin, Plus, Edit, Trash2, Package, X, CheckCircle2, Building } from 'lucide-react';
-import { getLocaisStorage, saveLocalStorage, deleteLocalStorage, getPatrimoniosStorage, Local } from '@/lib/storage';
+import {
+  saveLocalStorage,
+  deleteLocalStorage,
+  subscribeLocais,
+  subscribePatrimonios,
+  Local,
+  Patrimonio,
+} from '@/lib/storage';
 
 interface LocalItem extends Local {
   _count?: {
     patrimonios: number;
-    consumiveis: number;
   };
 }
 
 export default function LocaisPage() {
   const [locais, setLocais] = useState<LocalItem[]>([]);
+  const [patrimonios, setPatrimonios] = useState<Patrimonio[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,34 +36,35 @@ export default function LocaisPage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    fetchLocais();
+    let rawLocais: Local[] = [];
+    let rawPatrimonios: Patrimonio[] = [];
+
+    const unsubLocais = subscribeLocais((locs) => {
+      rawLocais = locs;
+      atualizarLista(rawLocais, rawPatrimonios);
+      setLoading(false);
+    });
+
+    const unsubPats = subscribePatrimonios((pats) => {
+      rawPatrimonios = pats;
+      atualizarLista(rawLocais, rawPatrimonios);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubLocais();
+      unsubPats();
+    };
   }, []);
 
-  async function fetchLocais() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/locais');
-      if (res.ok) {
-        const json = await res.json();
-        setLocais(json);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    const patrimonios = getPatrimoniosStorage();
-    const locs = getLocaisStorage().map((l) => ({
+  function atualizarLista(locs: Local[], pats: Patrimonio[]) {
+    const list = locs.map((l) => ({
       ...l,
       _count: {
-        patrimonios: patrimonios.filter((p) => p.localId === l.id).length,
-        consumiveis: 0,
+        patrimonios: pats.filter((p) => p.localId === l.id).length,
       },
     }));
-
-    setLocais(locs);
-    setLoading(false);
+    setLocais(list);
   }
 
   function abrirModalNovo() {
@@ -95,52 +103,17 @@ export default function LocaisPage() {
       descricao: formData.descricao.trim(),
     };
 
-    try {
-      const url = isEditMode ? `/api/locais/${selectedId}` : '/api/locais';
-      const method = isEditMode ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
-        setIsModalOpen(false);
-        fetchLocais();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    saveLocalStorage(payload);
+    await saveLocalStorage(payload);
     setSuccessMsg(isEditMode ? 'Local atualizado!' : 'Novo local cadastrado!');
     setIsModalOpen(false);
-    fetchLocais();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
   async function handleExcluir(id: string, nome: string) {
     if (!confirm(`Tem certeza que deseja excluir a sala "${nome}"?`)) return;
 
-    try {
-      const res = await fetch(`/api/locais/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setSuccessMsg(`Local "${nome}" excluído.`);
-        fetchLocais();
-        setTimeout(() => setSuccessMsg(''), 4000);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    deleteLocalStorage(id);
+    await deleteLocalStorage(id);
     setSuccessMsg(`Local "${nome}" excluído.`);
-    fetchLocais();
     setTimeout(() => setSuccessMsg(''), 4000);
   }
 
